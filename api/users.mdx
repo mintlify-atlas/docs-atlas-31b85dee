@@ -1,5 +1,5 @@
 ---
-title: "Users API — Admin User Management Endpoints"
+title: "Users API — Account and Role Management Endpoints"
 sidebarTitle: "Users"
 description: "REST endpoints for managing system users. Admin-only operations to create, list, update, and delete user accounts with role-based access control."
 ---
@@ -53,7 +53,7 @@ Returns the currently authenticated user's own profile. Available to any authent
 
 ```bash
 curl -X GET https://your-host/api/users/profile \
-  -H "Authorization: Bearer <token>"
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 ```json
@@ -89,7 +89,7 @@ Returns a list of every user account in the system. **Admin only.**
 
 ```bash
 curl -X GET https://your-host/api/users \
-  -H "Authorization: Bearer <admin-token>"
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 ```json
@@ -158,7 +158,7 @@ Creates a new user account. **Admin only.**
 
 ```bash
 curl -X POST https://your-host/api/users \
-  -H "Authorization: Bearer <admin-token>" \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "username": "nueva_contadora",
@@ -237,7 +237,7 @@ the request still succeeds and returns the unmodified user object.
 
 ```bash
 curl -X PUT https://your-host/api/users/5 \
-  -H "Authorization: Bearer <admin-token>" \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{ "role": "admin" }'
 ```
@@ -275,7 +275,7 @@ their own account.
 
 ```bash
 curl -X DELETE https://your-host/api/users/5 \
-  -H "Authorization: Bearer <admin-token>"
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 **Error codes**

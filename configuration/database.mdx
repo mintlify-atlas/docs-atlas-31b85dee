@@ -1,7 +1,7 @@
 ---
 title: "SQL Server Database Setup for ContabilidadISV"
 sidebarTitle: "Database"
-description: "Set up the SQL Server database for ContabilidadISV: create the schema, configure connection pooling, verify tables, and understand the two consolidation table design."
+description: "Set up SQL Server for ContabilidadISV: create the schema, configure connection pooling, verify required tables, and learn the consolidation table design."
 ---
 
 ContabilidadISV stores all accounting data — consolidations, clients, users, audit logs, and uploaded files — in a single **SQL Server** database named `ContabilidadISV`. The backend uses the [`mssql`](https://www.npmjs.com/package/mssql) Node.js driver with a shared connection pool managed by the `Database` class in `backend/src/models/Database.js`.

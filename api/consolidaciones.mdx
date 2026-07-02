@@ -1,7 +1,7 @@
 ---
-title: "Consolidaciones API — CRUD and Query Endpoints"
+title: "Consolidaciones API — ISV Accounting CRUD Endpoints"
 sidebarTitle: "Consolidaciones"
-description: "REST endpoints for creating, reading, updating, and deleting accounting consolidations. Supports both Generales and Hoteles types with full 55-account double-entry data."
+description: "ContabilidadISV consolidation API: create, list, update, and soft-delete Generales and Hoteles ledger records with per-field audit logging on every change."
 ---
 
 All consolidation endpoints require a valid JWT token in the `Authorization` header (`Bearer <token>`). Consolidations represent monthly double-entry ledger records for a client. Each record is stored in either `consolidaciones_generales` or `consolidaciones_hoteles` depending on the value of `tipoRubro` supplied in the request. Non-admin users can only retrieve their own records; admin users receive records across all users. Every write operation is automatically registered in the system audit log ([Audit Logs](/api/logs)).
@@ -359,7 +359,7 @@ Each of the 55 chart-of-accounts entries has two numeric fields: one suffixed `_
 
 ```bash
 curl -X POST https://api.example.com/api/consolidaciones \
-  -H "Authorization: Bearer <token>" \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "tipoRubro": "GENERALES",
@@ -439,7 +439,7 @@ List consolidation records from both `consolidaciones_generales` and `consolidac
 
 ```bash
 curl -X GET "https://api.example.com/api/consolidaciones?cliente_id=7&tipo=GENERALES&fecha_desde=2024-01-01&fecha_hasta=2024-12-31" \
-  -H "Authorization: Bearer <token>"
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 ```json

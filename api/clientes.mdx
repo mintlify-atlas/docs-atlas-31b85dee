@@ -1,7 +1,7 @@
 ---
 title: "Clientes API — Company Client Management Endpoints"
 sidebarTitle: "Clientes"
-description: "REST endpoints for creating, listing, updating, and deactivating client company records. Each client has an RTN (Honduran tax ID), sector, representative, and contact details."
+description: "Manage business client records in ContabilidadISV. Each client has an RTN (Honduran tax ID), sector, representative, contact details, and an optional logo."
 ---
 
 All clientes endpoints require a valid JWT token in the `Authorization` header (`Bearer <token>`). Clients (*empresas*) are the legal entities on behalf of which tax consolidations are created. The **RTN** (Registro Tributario Nacional) is Honduras's tax registration number and must contain only digits and hyphens — it uniquely identifies a company in the SAR (Servicio de Administración de Rentas) system. Every write operation is automatically logged to the system audit trail.
@@ -81,7 +81,7 @@ List all client records. By default returns only active clients (`activo = 1`). 
 
 ```bash
 curl -X GET "https://api.example.com/api/clientes?activo=true&search=farmacia" \
-  -H "Authorization: Bearer <token>"
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 ```json
@@ -197,7 +197,7 @@ Create a new client company record. All seven core fields are required. Optional
 
 ```bash
 curl -X POST https://api.example.com/api/clientes \
-  -H "Authorization: Bearer <token>" \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "nombre_empresa": "Hotel Vista Honduras S.A.",

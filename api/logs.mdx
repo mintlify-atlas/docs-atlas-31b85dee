@@ -1,7 +1,7 @@
 ---
-title: "System Logs API — Audit Trail Endpoints"
+title: "System Logs API — Audit Trail and Bitacora Endpoints"
 sidebarTitle: "Logs"
-description: "Admin-only endpoints to retrieve the ContabilidadISV audit log (bitácora). Returns categorized, formatted log entries tracking logins, consolidation changes, and system events."
+description: "Admin-only audit log API for ContabilidadISV. Retrieve formatted entries for logins, consolidation edits, and system events, or insert manual log records."
 ---
 
 The logs API exposes ContabilidadISV's system audit trail (*bitácora del sistema*). Only users with `role='admin'` can access either endpoint. Log entries are formatted for human readability before being returned: raw action codes are translated to friendly Spanish titles, dates are localised to Honduras time (UTC-6), and each entry carries a `category` and `priority` label suitable for display in the admin dashboard.
@@ -123,11 +123,11 @@ or action type.
 ```bash
 # Last 100 entries (default)
 curl -X GET "https://your-host/api/logs" \
-  -H "Authorization: Bearer <admin-token>"
+  -H "Authorization: Bearer $TOKEN"
 
 # Last 50 login events for user ID 3
 curl -X GET "https://your-host/api/logs?limit=50&userId=3&action=USER_LOGIN" \
-  -H "Authorization: Bearer <admin-token>"
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 ```json
@@ -196,7 +196,7 @@ out-of-band administrative actions or annotating the audit trail. **Admin only.*
 
 ```bash
 curl -X POST https://your-host/api/logs \
-  -H "Authorization: Bearer <admin-token>" \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "action": "manual_audit",

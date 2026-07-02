@@ -88,7 +88,7 @@ The `LogsSection` component is accessible from the **Bitácora** entry in the si
   - Category badge (gray pill)
   - `formatted_message` (human-readable description)
   - Username (or "Sistema" for automated events)
-  - **Friendly date** formatted for Honduras UTC−6 (e.g., "hace 5 minutos")
+  - **Friendly date** formatted for Honduras UTC−6 (e.g., `"15/11/2024 2:32:07 PM"`)
   - `location_info` (source IP address, when available)
 
 Entries are loaded in reverse-chronological order (newest first). The timeline is capped at **100 entries** per load to keep the view responsive.
@@ -135,8 +135,8 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
       "category": "Contabilidad",
       "priority": "importante",
       "category_icon": "📊",
-      "friendly_date": "hace 3 horas",
-      "location_info": "192.168.1.45"
+      "friendly_date": "15/11/2024 2:32:07 PM",
+      "location_info": "Desde: 192.168.1.45"
     }
   ],
   "total": 1042,
@@ -144,7 +144,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
     "total": 1042,
     "today": 14,
     "thisWeek": 87,
-    "byCategory": { "Contabilidad": 420, "Inicio de Sesión": 315 },
+    "byCategory": { "consolidacion_created": 420, "USER_LOGIN": 315 },
     "byPriority": { "normal": 700, "importante": 280, "critico": 62 }
   }
 }

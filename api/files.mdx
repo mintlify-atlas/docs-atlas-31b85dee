@@ -1,7 +1,7 @@
 ---
-title: "Files API — Excel Upload and Download Endpoints"
+title: "Files API — Excel Upload, Download, and Data Access"
 sidebarTitle: "Files"
-description: "Upload Excel files (.xlsx/.xls, max 10 MB) to import consolidated accounting data, browse upload history, and download previously uploaded files by ID."
+description: "Upload .xlsx/.xls Excel files (max 10 MB) to ContabilidadISV, browse upload history, and download or inspect previously uploaded workbooks by file ID."
 ---
 
 All file endpoints require a valid JWT token sent in the `Authorization: Bearer <token>` header. Files are uploaded as `multipart/form-data` and stored in the server-side `uploads/` directory with a UUID-prefixed filename to prevent collisions. Once uploaded, an Excel workbook is automatically parsed with [SheetJS (xlsx)](https://sheetjs.com/): each sheet is converted to JSON, numeric column totals are computed, and the resulting data is persisted as a consolidated reference that can be retrieved later via `GET /api/files/data/:fileId`.
@@ -18,11 +18,11 @@ All file endpoints require a valid JWT token sent in the `Authorization: Bearer 
 ## POST /api/files/upload
 
 Uploads an Excel workbook. The request must be `multipart/form-data`. The file
-field name must be **`file`**.
+field name must be **`excelFile`**.
 
 **Request**
 
-<ParamField body="file" type="file" required>
+<ParamField body="excelFile" type="file" required>
   The Excel workbook to upload. Accepted MIME types:
   `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`
   (`.xlsx`) and `application/vnd.ms-excel` (`.xls`). Maximum size: **10 MB**.
@@ -58,8 +58,8 @@ field name must be **`file`**.
 
 ```bash
 curl -X POST https://your-host/api/files/upload \
-  -H "Authorization: Bearer <token>" \
-  -F "file=@/path/to/consolidacion_junio.xlsx"
+  -H "Authorization: Bearer $TOKEN" \
+  -F "excelFile=@/path/to/consolidacion_junio.xlsx"
 ```
 
 ```json
@@ -126,7 +126,7 @@ file from every user; non-admin users see only their own uploads.
 
 ```bash
 curl -X GET "https://your-host/api/files/history" \
-  -H "Authorization: Bearer <token>"
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 ```json
@@ -166,7 +166,7 @@ or `curl` client receives the file under its original name.
 
 ```bash
 curl -X GET https://your-host/api/files/download/42 \
-  -H "Authorization: Bearer <token>" \
+  -H "Authorization: Bearer $TOKEN" \
   -O -J
 ```
 
@@ -225,7 +225,7 @@ as an object with row data and computed numeric column totals.
 
 ```bash
 curl -X GET https://your-host/api/files/data/42 \
-  -H "Authorization: Bearer <token>"
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 ```json

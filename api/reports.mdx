@@ -1,7 +1,7 @@
 ---
 title: "Reports API — Metrics, Rankings, and Account Summaries"
 sidebarTitle: "Reports"
-description: "Three reporting endpoints: consolidation count metrics, client activity rankings, and aggregated per-account Debe/Haber summaries with bimestral, trimestral, semestral, and annual period filters."
+description: "ContabilidadISV reports API: consolidation count metrics, client rankings, and per-account Debe/Haber summaries filterable by fiscal year and period type."
 ---
 
 All report endpoints require a valid JWT token. They aggregate data from both
@@ -51,11 +51,11 @@ optionally scoped to a specific year and/or client.
 ```bash
 # All years, all clients
 curl -X GET "https://your-host/api/reports/metrics" \
-  -H "Authorization: Bearer <token>"
+  -H "Authorization: Bearer $TOKEN"
 
 # Filter by year and client
 curl -X GET "https://your-host/api/reports/metrics?year=2024&clienteId=7" \
-  -H "Authorization: Bearer <token>"
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 ```json
@@ -104,7 +104,7 @@ company name). Clients with zero consolidations are excluded.
 
 ```bash
 curl -X GET "https://your-host/api/reports/ranking?year=2024" \
-  -H "Authorization: Bearer <token>"
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 ```json
@@ -224,15 +224,15 @@ combination and contains the fields below.
 ```bash
 # Annual summary for all clients in 2024
 curl -X GET "https://your-host/api/reports/summaries?year=2024&periodo=anual" \
-  -H "Authorization: Bearer <token>"
+  -H "Authorization: Bearer $TOKEN"
 
 # First trimester for a specific client
 curl -X GET "https://your-host/api/reports/summaries?year=2024&clienteId=12&periodo=trimestral-1" \
-  -H "Authorization: Bearer <token>"
+  -H "Authorization: Bearer $TOKEN"
 
 # Second semester, all clients
 curl -X GET "https://your-host/api/reports/summaries?year=2024&periodo=semestral-2" \
-  -H "Authorization: Bearer <token>"
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 ```json

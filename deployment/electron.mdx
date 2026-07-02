@@ -1,7 +1,7 @@
 ---
-title: "Package ContabilidadISV as a Windows Desktop App"
+title: "Package ContabilidadISV as a Windows Desktop Installer"
 sidebarTitle: "Electron"
-description: "Bundle ContabilidadISV as a standalone Windows installer using Electron and electron-builder. The packaged app includes the Express backend and serves the built frontend locally."
+description: "Bundle ContabilidadISV as a self-contained Windows installer using Electron and electron-builder, including the Express backend and built React SPA."
 ---
 
 The Electron packaging mode turns ContabilidadISV into a fully self-contained Windows desktop application. The compiled React SPA, the Express.js backend, and a bundled copy of Node.js are all packed into a single NSIS installer — no separate server, no IIS, no nginx. When a user double-clicks the installer, all three layers are installed together and the app launches directly from the Start Menu or desktop shortcut. The backend still requires a reachable **SQL Server** instance (local or network), but everything else ships inside the `.exe`.
@@ -44,7 +44,7 @@ Running the app in development mode lets you iterate quickly — the React front
 
     ```
     concurrently
-      "npm run dev:backend"          → Express on port 3001
+      "npm run dev:backend"          → Express on port 3002
       "npm run dev:frontend"         → Vite HMR on port 5174
       "node scripts/wait-for-services.js && electron ."
     ```

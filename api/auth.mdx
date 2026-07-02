@@ -1,7 +1,7 @@
 ---
 title: "Authentication API — Login, Register, Token Validation"
 sidebarTitle: "Auth"
-description: "ContabilidadISV uses JWT bearer tokens for authentication. Obtain a token via POST /api/auth/login and include it in the Authorization header on every subsequent request."
+description: "JWT bearer token auth for ContabilidadISV. Obtain a token via POST /api/auth/login and include it in the Authorization header on every protected request."
 ---
 
 ContabilidadISV's authentication system is built on **JSON Web Tokens (JWT)**. The flow is straightforward: the client POSTs credentials to `POST /api/auth/login`, receives a signed JWT in the response, and stores it in `localStorage` (frontend) or in your HTTP client's state. Every subsequent request to a protected endpoint must include the token in the `Authorization` header in the form `Authorization: Bearer <token>`. On the server side, the `authenticateToken` middleware verifies the token signature and confirms that the corresponding user still exists in the database before allowing the request to proceed.
@@ -227,7 +227,7 @@ Verifies that the bearer token in the request header is still valid and that the
 
 ```bash curl
 curl -s https://your-api.example.com/api/auth/validate \
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 ```json Response
@@ -280,7 +280,7 @@ Returns the full profile record for the currently authenticated user as stored i
 
 ```bash curl
 curl -s https://your-api.example.com/api/auth/profile \
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 ```json Response
@@ -326,7 +326,7 @@ Records a `USER_LOGOUT` event in the system log (capturing IP address and User-A
 
 ```bash curl
 curl -s -X POST https://your-api.example.com/api/auth/logout \
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 ```json Response
@@ -399,7 +399,7 @@ Returns a paginated list of login attempts recorded in the database (both succes
 
 ```bash curl
 curl -s "https://your-api.example.com/api/auth/login-history?hoursBack=48&failedOnly=true" \
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 ```json Response
@@ -465,7 +465,7 @@ Aggregates failed login attempts by IP address over a configurable time window. 
 
 ```bash curl
 curl -s "https://your-api.example.com/api/auth/failed-login-stats?minutesBack=60" \
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 ```json Response
@@ -505,7 +505,7 @@ Purges login attempt records older than the specified number of days. Run period
 
 ```bash curl
 curl -s -X POST https://your-api.example.com/api/auth/clean-login-attempts \
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{ "daysToKeep": 14 }'
 ```

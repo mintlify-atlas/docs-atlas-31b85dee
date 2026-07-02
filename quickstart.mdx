@@ -1,6 +1,7 @@
+---
 title: "Get Started with ContabilidadISV in 5 Steps"
 sidebarTitle: "Quickstart"
-description: "Set up ContabilidadISV locally: install Node.js dependencies, configure SQL Server, run database migrations, and create your first accounting consolidation."
+description: "Set up ContabilidadISV: clone the repo, configure SQL Server, run the database migration, and record your first ISV tax consolidation in five steps."
 ---
 
 This guide walks you from a fresh clone to a running ContabilidadISV instance with a logged-in session, ready to create your first consolidation.
@@ -15,7 +16,7 @@ This guide walks you from a fresh clone to a running ContabilidadISV instance wi
 | **Git** | To clone the repository |
 
 <Note>
-  On Windows, the recommended setup is **SQL Server Express** with the default instance name `SQLEXPRESS`. The `Database.js` connection config defaults to this instance automatically. If you use a different instance name or a full SQL Server edition, set `DB_INSTANCE` in your `.env` file accordingly.
+  On Windows, the recommended setup is **SQL Server Express** with default TCP port `1433`. The `Database_SqlServer.js` connection config defaults to port `1433` automatically. If your SQL Server instance listens on a different port, set `DB_PORT` in your `.env` file accordingly.
 </Note>
 
 ---
@@ -42,7 +43,7 @@ This guide walks you from a fresh clone to a running ContabilidadISV instance wi
   </Step>
 
   <Step title="Configure the environment">
-    Create the file `backend/.env`. The backend reads this file at startup via `dotenv`. All database keys map directly to the `mssql` connection config in `backend/src/models/Database.js`.
+    Create the file `backend/.env`. The backend reads this file at startup via `dotenv`. All database keys map directly to the `mssql` connection config in `backend/src/models/Database_SqlServer.js`.
 
     ```bash
     # backend/.env
@@ -52,7 +53,7 @@ This guide walks you from a fresh clone to a running ContabilidadISV instance wi
     DB_NAME=ContabilidadISV
     DB_USER=sa
     DB_PASSWORD=YourStrongPassword123!
-    DB_INSTANCE=SQLEXPRESS
+    DB_PORT=1433
 
     # Set to true only if connecting to Azure SQL or a TLS-enforced server
     DB_ENCRYPT=false
@@ -71,22 +72,22 @@ This guide walks you from a fresh clone to a running ContabilidadISV instance wi
       If `DB_USER` and `DB_PASSWORD` are omitted, the backend falls back to **Windows Authentication** (Integrated Security). This is fine for local development on Windows, but you must ensure the Windows user running Node.js has `db_owner` or equivalent rights on the `ContabilidadISV` database.
     </Warning>
 
-    **Key defaults from `Database.js`:**
+    **Key defaults from `Database_SqlServer.js`:**
     - `DB_SERVER` → `localhost`
     - `DB_NAME` → `ContabilidadISV`
-    - `DB_INSTANCE` → `SQLEXPRESS`
+    - `DB_PORT` → `1433`
     - `DB_TRUST_CERT` → `true` (local dev default)
     - `DB_ENCRYPT` → `false` (Azure requires `true`)
   </Step>
 
   <Step title="Initialize the database">
-    Run the database migration script. This creates the `ContabilidadISV` database (if it does not exist), sets up all required tables (`users`, `consolidaciones_generales`, `consolidaciones_hoteles`, `clientes`, `system_logs`, `uploaded_files`), and seeds the default admin user.
+    Before running the Node.js init script, ensure the SQL Server database and all required tables (`users`, `consolidaciones_generales`, `consolidaciones_hoteles`, `clientes`, `system_logs`, `uploaded_files`) already exist in SQL Server. Create them using your SQL Server management tool, then run the init script to seed the default admin user:
 
     ```bash
     npm run init-db
     ```
 
-    This is a shortcut for `cd backend && npm run init-db`. You should see output confirming that each table was created and that the seed admin account was inserted. If you see a connection error, double-check `DB_SERVER`, `DB_INSTANCE`, and that SQL Server is running.
+    This is a shortcut for `cd backend && npm run init-db` (`backend/scripts/initDatabase.js`). It connects to SQL Server using your `.env` credentials and inserts the default admin account (`admin@contabilidad.com` / `admin123`). If you see a connection error, double-check `DB_SERVER`, `DB_PORT`, and that SQL Server is running.
 
     <Tip>
       You can combine installation and initialization into a single command:
@@ -106,7 +107,7 @@ This guide walks you from a fresh clone to a running ContabilidadISV instance wi
 
     You should see two sets of startup logs interleaved in your terminal:
 
-    ```
+    ```text
     [dev:backend]  ✅ Conectado a SQL Server correctamente
     [dev:backend]  Server running on port 3002
     [dev:frontend] VITE v5.x.x  ready in Xms

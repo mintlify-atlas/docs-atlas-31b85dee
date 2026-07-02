@@ -1,7 +1,7 @@
 ---
 title: "ContabilidadISV: Tax Accounting Consolidation for Honduras"
 sidebarTitle: "Introduction"
-description: "ContabilidadISV streamlines ISV and IST tax consolidation for Honduran accountants — double-entry ledgers, automated tax formulas, client management, and Excel/PDF exports."
+description: "ContabilidadISV handles ISV and IST tax consolidation for Honduran firms: automated formulas, client management, audit logs, and Excel and PDF exports."
 ---
 
 ContabilidadISV is a full-stack accounting consolidation platform purpose-built for Honduran accountants and bookkeeping firms. Honduran tax law requires businesses to report Impuesto Sobre Ventas (ISV) at 15 % or 18 %, and hotel operators to additionally file Impuesto Sobre Turismo (IST) at 4 %. Manually reconciling these obligations across dozens of clients every month — each with its own 55-account chart of accounts — is error-prone and time-consuming. ContabilidadISV automates every step: it imports raw ledger data, applies the correct ISV and IST formulas, consolidates Debe/Haber entries across all accounts, and produces audit-ready reports that accountants can export to Excel or PDF and deliver directly to SAR (Servicio de Administración de Rentas).
@@ -95,7 +95,7 @@ Used for hotels, resorts, and other tourism businesses subject to IST. Identical
 | Layer | Technologies |
 |---|---|
 | Frontend | React 18, TypeScript, Vite, Axios, TailwindCSS, Lucide Icons |
-| Backend | Node.js, Express.js, express-validator, JWT (`jsonwebtoken`), `bcrypt` |
+| Backend | Node.js, Express.js, express-validator, JWT (`jsonwebtoken`), `bcryptjs` |
 | Database | Microsoft SQL Server, `mssql` connection pooling |
 | Desktop | Electron 28, electron-builder (NSIS installer for Windows) |
 

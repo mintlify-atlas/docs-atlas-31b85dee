@@ -1,7 +1,7 @@
 ---
 title: "ContabilidadISV System Architecture Overview"
 sidebarTitle: "Architecture"
-description: "ContabilidadISV is a three-tier system: a React/TypeScript SPA, an Express REST API, and a SQL Server database, with an optional Electron shell for desktop deployment."
+description: "ContabilidadISV architecture: React/TypeScript SPA, Express REST API, SQL Server, and optional Electron shell for offline Windows desktop deployment."
 ---
 
 ContabilidadISV follows a classic three-tier architecture. The **presentation tier** is a React 18 + TypeScript single-page application built with Vite. It communicates exclusively through HTTP with the **logic tier**: an Express.js REST API that enforces authentication, validates inputs, and executes all business rules. The **data tier** is a Microsoft SQL Server database accessed through a managed `mssql` connection pool. An optional **Electron shell** wraps all three tiers into a self-contained Windows desktop application, spawning the backend as a child process and loading the pre-built frontend from the local filesystem.
@@ -82,17 +82,17 @@ All mutation routes use `express-validator` `body()` validators. For example, th
 
 ### Connection pooling
 
-`backend/src/models/Database.js` wraps the `mssql` library in a singleton `Database` class. On first use, `init()` opens a connection pool (`sql.connect(config)`) and stores it as `this.pool`. Every subsequent query reuses the pool. Configuration keys read from `process.env`:
+`backend/src/models/Database_SqlServer.js` wraps the `mssql` library in a singleton `Database` class. On first use, `init()` opens a connection pool (`sql.connect(config)`) and stores it as `this.pool`. Every subsequent query reuses the pool. Configuration keys read from `process.env`:
 
-```
-DB_SERVER          → mssql config.server         (default: localhost)
-DB_NAME            → mssql config.database        (default: ContabilidadISV)
-DB_USER            → mssql config.user            (omit for Windows Auth)
-DB_PASSWORD        → mssql config.password
-DB_INSTANCE        → config.options.instanceName  (default: SQLEXPRESS)
-DB_ENCRYPT         → config.options.encrypt       (default: false)
-DB_TRUST_CERT      → config.options.trustServerCertificate (default: true)
-DB_CONNECTION_TIMEOUT → connectionTimeout         (default: 30000 ms)
+```text
+DB_SERVER             → mssql config.server         (default: localhost)
+DB_NAME               → mssql config.database        (default: ContabilidadISV)
+DB_PORT               → mssql config.port            (default: 1433)
+DB_USER               → mssql config.user            (omit for Windows Auth)
+DB_PASSWORD           → mssql config.password
+DB_ENCRYPT            → config.options.encrypt       (default: false)
+DB_TRUST_CERT         → config.options.trustServerCertificate (default: true)
+DB_CONNECTION_TIMEOUT → connectionTimeout            (default: 30000 ms)
 ```
 
 See the [Environment Configuration reference](/configuration/environment) for a full variable listing.
@@ -101,13 +101,13 @@ See the [Environment Configuration reference](/configuration/environment) for a 
 
 ## Database
 
-ContabilidadISV uses **Microsoft SQL Server**. The schema is initialised by `npm run init-db` (`backend/src/scripts/initDb.js`).
+ContabilidadISV uses **Microsoft SQL Server**. The tables must be created in SQL Server before first use; `npm run init-db` (`backend/scripts/initDatabase.js`) then connects and seeds the default admin account.
 
 ### Tables
 
 | Table | Purpose |
 |---|---|
-| `users` | Accounts with `username`, `email`, `password` (bcrypt hash), `role` (`user` \| `admin`) |
+| `users` | Accounts with `username`, `email`, `password` (bcryptjs hash), `role` (`user` \| `admin`) |
 | `consolidaciones_generales` | Standard ISV consolidations — 55 accounts, Debe/Haber, ISV 15 %, ISV 18 % |
 | `consolidaciones_hoteles` | Hotel ISV+IST consolidations — same as Generales plus `ist_4` column |
 | `clientes` | Client profiles: `nombre_empresa`, `rtn`, `rubro`, `representante`, `telefono`, `email`, `direccion`, `logo_url`, `activo` |
@@ -133,7 +133,7 @@ The optional Electron shell packages the entire application into a single Window
 3. **Window creation** — `createWindow()` creates a `BrowserWindow` (1400 × 900, min 1024 × 768) with:
    - `nodeIntegration: false` and `contextIsolation: true` for security
    - A preload script (`electron/preload.js`) that exposes `window.electron.isElectron` and `window.electron.env.API_URL` to the renderer
-4. **URL loading** — In dev mode, loads `http://localhost:5174`; in production, loads `frontend/dist/index.html` directly from the filesystem.
+4. **URL loading** — In dev mode, loads `https://localhost:5174`; in production, loads `frontend/dist/index.html` directly from the filesystem (via `file://` path resolved from `process.resourcesPath/app.asar.unpacked/frontend/dist/index.html`).
 5. **Graceful shutdown** — `app.on('before-quit')` kills the backend child process before the Electron process exits.
 
 ### Build commands
@@ -155,7 +155,7 @@ Output is written to `dist-electron/`. See the [Electron deployment guide](/depl
 
 ## Monorepo directory structure
 
-```
+```text
 ContabilidadISV/
 ├── package.json              # Root — orchestration scripts, electron-builder config
 ├── electron/
@@ -179,7 +179,7 @@ ContabilidadISV/
 │   ├── server.js             # Express app entry point (port 3002)
 │   ├── src/
 │   │   ├── models/
-│   │   │   └── Database.js   # mssql pool singleton
+│   │   │   └── Database_SqlServer.js   # mssql pool singleton (used by server.js)
 │   │   ├── routes/           # auth, consolidaciones, clientes, users, files, reports, logs, admin
 │   │   ├── controllers/      # Business logic per route group
 │   │   └── middleware/

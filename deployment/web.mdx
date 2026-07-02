@@ -1,7 +1,7 @@
 ---
-title: "Deploy ContabilidadISV as a Web Application"
+title: "Deploy ContabilidadISV as a Web App on Linux or Windows"
 sidebarTitle: "Web Deployment"
-description: "Build and deploy ContabilidadISV's React frontend and Express backend for production use on a local network or server, with SQL Server on Windows."
+description: "Build and deploy ContabilidadISV's React frontend and Express backend for production use on a local network or server with SQL Server."
 ---
 
 ContabilidadISV can be deployed as a traditional web application — a React SPA served as static files alongside an Express.js REST API backend. In this mode the two services run as separate OS processes: the backend listens on **port 3002** and the frontend is either served from the same Express process via its static handler, or from a dedicated web server such as nginx. Clients connect from any browser on the same network; no Electron or desktop packaging is needed.

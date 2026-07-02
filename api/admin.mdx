@@ -41,7 +41,7 @@ Validates the system configuration password defined in the `ADMIN_SYSTEM_CONFIG_
 
 ```bash
 curl -X POST https://your-host/api/admin/validate-system-password \
-  -H "Authorization: Bearer <admin-token>" \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{ "password": "mi_clave_sistema" }'
 ```
@@ -106,7 +106,7 @@ per-IP suspicion scores, and failed login attempt counts.
 
 ```bash
 curl -X GET https://your-host/api/admin/security-stats \
-  -H "Authorization: Bearer <admin-token>"
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 ```json
@@ -164,7 +164,7 @@ and the operation is recorded in the audit log.
 
 ```bash
 curl -X POST https://your-host/api/admin/backup \
-  -H "Authorization: Bearer <admin-token>" \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{ "table": "consolidaciones_generales" }'
 ```
@@ -233,7 +233,7 @@ deletion are recorded in the audit log.
 ```bash
 # Safe delete with automatic backup
 curl -X POST https://your-host/api/admin/delete \
-  -H "Authorization: Bearer <admin-token>" \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "table": "consolidaciones_hoteles",
