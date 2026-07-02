@@ -1,0 +1,165 @@
+---
+title: "Financial Reports and Consolidation Analytics"
+sidebarTitle: "Reports"
+description: "ContabilidadISV generates three types of reports: consolidation metrics by year/client, client ranking by activity, and detailed per-account summaries across bimestral, trimestral, semestral, and annual periods."
+---
+
+The **Reportes** module aggregates consolidation data stored across both the `consolidaciones_generales` and `consolidaciones_hoteles` tables into three distinct views: high-level metrics, client activity ranking, and per-account Debe/Haber summaries. All report data is served through the `/api/reports` router and rendered inside the `ReportsSection` React component. Reports can be exported to Excel (`.xlsx`) or PDF directly from the dashboard.
+
+---
+
+## Metrics
+
+**Endpoint:** `GET /api/reports/metrics`
+
+Returns the total count of consolidations in the system, broken down by type.
+
+**Response shape:**
+
+```json
+{
+  "totalConsolidaciones": 142,
+  "consolidacionesGenerales": 98,
+  "consolidacionesHoteles": 44
+}
+```
+
+**Query parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `year` | string | Four-digit year (e.g., `2024`). Omit or pass `todos` for all years. |
+| `clienteId` | string | Numeric client ID. Omit or pass `todos` for all clients. |
+
+The dashboard shows these three values as colored metric cards: **Total** (blue), **Generales** (green), and **Hoteles** (purple).
+
+---
+
+## Client Ranking
+
+**Endpoint:** `GET /api/reports/ranking`
+
+Returns all clients sorted in descending order by their total consolidation count (Generales + Hoteles combined). The ranking is not filtered by year or client — it always reflects the full historical dataset.
+
+**Response shape (array):**
+
+```json
+[
+  {
+    "id": 7,
+    "nombre_empresa": "Comercial Tegucigalpa S.A.",
+    "totalConsolidaciones": 24,
+    "consolidacionesGenerales": 18,
+    "consolidacionesHoteles": 6
+  }
+]
+```
+
+**Query parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `year` | string | Optional filter by year. |
+
+The ranking table in the UI shows a gold, silver, or bronze medal emoji for positions 1–3, and `#N` for all other positions.
+
+---
+
+## Detailed Summaries
+
+**Endpoint:** `GET /api/reports/summaries`
+
+Returns aggregated Debe/Haber sums per account, per client, for a given year and time period. Each row in the response corresponds to one client and one consolidation type (`general` or `hotel`), with all 55 account fields summed across every matching consolidation.
+
+**Query parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `year` | string | Yes | Four-digit year, e.g. `2024`. |
+| `clienteId` | string | No | Numeric client ID or `todos` for all clients. |
+| `periodo` | string | Yes | One of the period values listed below. |
+
+**Supported `periodo` values:**
+
+| Value | Description |
+|-------|-------------|
+| `anual` | Full calendar year |
+| `bimestral-1` … `bimestral-6` | Two-month periods (Jan–Feb through Nov–Dec) |
+| `trimestral-1` … `trimestral-4` | Three-month quarters |
+| `semestral-1` | First semester (Jan–Jun) |
+| `semestral-2` | Second semester (Jul–Dec) |
+
+**Example request — Q1 2024, all clients:**
+
+```http
+GET /api/reports/summaries?year=2024&periodo=trimestral-1&clienteId=todos
+```
+
+**Example request — full year 2023 for client ID 5:**
+
+```http
+GET /api/reports/summaries?year=2023&periodo=anual&clienteId=5
+```
+
+The response includes `total_debe`, `total_haber`, and `diferencia` computed fields, as well as `cliente_rtn` and `usuario_nombre` for display on exported PDF headers.
+
+---
+
+## Viewing Reports in the Dashboard
+
+The `ReportsSection` component is accessed via the **Reportes** entry in the sidebar. It contains three tabs:
+
+<CardGroup cols={3}>
+  <Card title="Métricas Generales" icon="chart-simple" href="/features/reports">
+    Count cards for total, Generales, and Hoteles consolidations. Filterable by year and client via a live-search input.
+  </Card>
+  <Card title="Ranking de Clientes" icon="ranking-star" href="/features/reports">
+    Sortable table showing each client's total and per-type consolidation counts with medal indicators for top 3.
+  </Card>
+  <Card title="Resúmenes por Cliente" icon="table-cells" href="/features/reports">
+    Per-account Debe/Haber table with year, client, and period filters. Includes Exportar Excel and Exportar PDF buttons.
+  </Card>
+</CardGroup>
+
+### Summaries Tab — Workflow
+
+<Steps>
+  <Step title="Select the Resúmenes por Cliente tab">
+    Click the **Resúmenes por Cliente** tab at the top of the Reports section.
+  </Step>
+  <Step title="Set filters">
+    Choose a **Cliente** (type to search, or leave as _Todos los clientes_), a **Año**, and a **Período** from the dropdowns.
+  </Step>
+  <Step title="Apply filters">
+    Click **Aplicar Filtros**. The system fetches aggregated data from `GET /api/reports/summaries`.
+  </Step>
+  <Step title="Review the summary table">
+    Each client block shows all 55 accounts in rows with their summed Debe and Haber values, plus a TOTALES row and a DIFERENCIA row at the bottom.
+  </Step>
+  <Step title="Export (optional)">
+    Click **Exportar Excel** or **Exportar PDF** to download the current summary. Both buttons are disabled until data is loaded.
+  </Step>
+</Steps>
+
+<Tip>
+  The **Exportar PDF** button for summaries generates a letter-sized PDF with a centered logo header, the period label, client name, RTN, generation date, and the full account table — identical layout to the per-consolidation PDF export.
+</Tip>
+
+---
+
+## Related Pages
+
+<CardGroup cols={2}>
+  <Card title="Consolidations" icon="table" href="/features/consolidations">
+    Understand the source data that feeds into reports.
+  </Card>
+  <Card title="Export" icon="file-export" href="/features/export">
+    Export individual consolidations in addition to summary reports.
+  </Card>
+  <Card title="Reports API" icon="code" href="/api/reports">
+    REST endpoints for all three report types.
+  </Card>
+  <Card title="Clients" icon="building" href="/features/clients">
+    Client entities referenced in report filters and summaries.
+  </Card>
+</CardGroup>

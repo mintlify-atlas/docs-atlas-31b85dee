@@ -1,0 +1,281 @@
+---
+title: "Reports API — Metrics, Rankings, and Account Summaries"
+sidebarTitle: "Reports"
+description: "Three reporting endpoints: consolidation count metrics, client activity rankings, and aggregated per-account Debe/Haber summaries with bimestral, trimestral, semestral, and annual period filters."
+---
+
+All report endpoints require a valid JWT token. They aggregate data from both
+`consolidaciones_generales` and `consolidaciones_hoteles` tables, returning
+only active records (`activo = 1`). Results can be filtered by fiscal year
+and, where supported, by a specific client.
+
+<Note>
+  The `/summaries` endpoint returns combined results from both consolidation
+  tables. Each row in the response includes a `tipo` field (`"general"` or
+  `"hotel"`) so you can distinguish the source table.
+</Note>
+
+---
+
+## GET /api/reports/metrics
+
+Returns a high-level count of consolidation records across both tables,
+optionally scoped to a specific year and/or client.
+
+**Query parameters**
+
+<ParamField query="year" type="number">
+  Four-digit fiscal year to filter by (e.g. `2024`). Pass `"todos"` or omit
+  to include all years.
+</ParamField>
+
+<ParamField query="clienteId" type="number">
+  Numeric client ID to restrict counts to a single client. Pass `"todos"` or
+  omit for all clients.
+</ParamField>
+
+**Response**
+
+<ResponseField name="consolidacionesGenerales" type="number">
+  Count of active records in `consolidaciones_generales` matching the filters.
+</ResponseField>
+
+<ResponseField name="consolidacionesHoteles" type="number">
+  Count of active records in `consolidaciones_hoteles` matching the filters.
+</ResponseField>
+
+<ResponseField name="totalConsolidaciones" type="number">
+  Sum of `consolidacionesGenerales` + `consolidacionesHoteles`.
+</ResponseField>
+
+```bash
+# All years, all clients
+curl -X GET "https://your-host/api/reports/metrics" \
+  -H "Authorization: Bearer <token>"
+
+# Filter by year and client
+curl -X GET "https://your-host/api/reports/metrics?year=2024&clienteId=7" \
+  -H "Authorization: Bearer <token>"
+```
+
+```json
+{
+  "consolidacionesGenerales": 148,
+  "consolidacionesHoteles": 34,
+  "totalConsolidaciones": 182
+}
+```
+
+---
+
+## GET /api/reports/ranking
+
+Returns an ordered list of all active clients with their consolidation counts,
+sorted by `totalConsolidaciones` descending (ties resolved alphabetically by
+company name). Clients with zero consolidations are excluded.
+
+**Query parameters**
+
+<ParamField query="year" type="number">
+  Four-digit fiscal year to filter by. Pass `"todos"` or omit for all years.
+</ParamField>
+
+**Response** — JSON array of ranking objects.
+
+<ResponseField name="id" type="number">
+  Numeric client ID (`clientes.id`).
+</ResponseField>
+
+<ResponseField name="nombre_empresa" type="string">
+  Company name of the client.
+</ResponseField>
+
+<ResponseField name="consolidacionesGenerales" type="number">
+  Number of general consolidations for this client in the selected year.
+</ResponseField>
+
+<ResponseField name="consolidacionesHoteles" type="number">
+  Number of hotel consolidations for this client in the selected year.
+</ResponseField>
+
+<ResponseField name="totalConsolidaciones" type="number">
+  Combined total, used for ranking order.
+</ResponseField>
+
+```bash
+curl -X GET "https://your-host/api/reports/ranking?year=2024" \
+  -H "Authorization: Bearer <token>"
+```
+
+```json
+[
+  {
+    "id": 12,
+    "nombre_empresa": "Café del Valle S.A.",
+    "consolidacionesGenerales": 24,
+    "consolidacionesHoteles": 0,
+    "totalConsolidaciones": 24
+  },
+  {
+    "id": 5,
+    "nombre_empresa": "Hotel Las Palmas",
+    "consolidacionesGenerales": 0,
+    "consolidacionesHoteles": 12,
+    "totalConsolidaciones": 12
+  }
+]
+```
+
+---
+
+## GET /api/reports/summaries
+
+Returns aggregated per-client Debe/Haber account sums for a given period.
+Results from `consolidaciones_generales` and `consolidaciones_hoteles` are
+both included in the same array — use the `tipo` field to distinguish them.
+
+**Query parameters**
+
+<ParamField query="year" type="number" required>
+  Four-digit fiscal year (e.g. `2024`).
+</ParamField>
+
+<ParamField query="clienteId" type="number">
+  Numeric client ID to restrict results to one client. Omit or pass `"todos"`
+  for all clients.
+</ParamField>
+
+<ParamField query="periodo" type="string">
+  Accounting period within the year. Controls the date-range filter applied
+  to `fecha_inicio`/`fecha_fin`. Accepted values:
+
+  | Value | Coverage |
+  |-------|----------|
+  | `anual` | Full year (Jan 1 – Dec 31) |
+  | `bimestral-1` | Jan–Feb |
+  | `bimestral-2` | Mar–Apr |
+  | `bimestral-3` | May–Jun |
+  | `bimestral-4` | Jul–Aug |
+  | `bimestral-5` | Sep–Oct |
+  | `bimestral-6` | Nov–Dec |
+  | `trimestral-1` | Jan–Mar |
+  | `trimestral-2` | Apr–Jun |
+  | `trimestral-3` | Jul–Sep |
+  | `trimestral-4` | Oct–Dec |
+  | `semestral-1` | Jan–Jun |
+  | `semestral-2` | Jul–Dec |
+
+  When omitted, results are filtered by year only (no date-range overlap
+  check).
+</ParamField>
+
+**Response** — JSON array. Each element represents one client-table
+combination and contains the fields below.
+
+<ResponseField name="cliente_id" type="number">
+  Numeric client ID.
+</ResponseField>
+
+<ResponseField name="cliente_nombre" type="string">
+  Company name.
+</ResponseField>
+
+<ResponseField name="cliente_rtn" type="string">
+  Honduran RTN (tax registration number) of the client.
+</ResponseField>
+
+<ResponseField name="usuario_nombre" type="string">
+  Username of the last user who worked on these consolidations.
+</ResponseField>
+
+<ResponseField name="tipo" type="string">
+  Source table: `"general"` (from `consolidaciones_generales`) or
+  `"hotel"` (from `consolidaciones_hoteles`).
+</ResponseField>
+
+<ResponseField name="[account]_debe / [account]_haber" type="number">
+  Aggregated SUM for each of the 55 accounting accounts, in both Debe and
+  Haber columns. Common accounts include `caja_bancos`, `ventas_gravadas_15`,
+  `isv_15_ventas`, `ventas_gravadas_18`, `isv_18_ventas`, `ventas_exentas`,
+  `ventas_exoneradas`, `ingresos_honorarios`, `compras_gravadas_15`,
+  `isv_15_compras`, `compras_gravadas_18`, `isv_18_compras`,
+  `compras_exentas`, `compras_exoneradas`, `sueldos_salarios`,
+  `treceavo_mes`, `catorceavo_mes`, `prestaciones_laborales`,
+  `energia_electrica`, `suministro_agua`, `ihss`, `alquileres`,
+  `combustibles_lubricantes`, `seguros`, `impuestos_municipales`,
+  `impuestos_estatales`, `honorarios_profesionales`,
+  `honorarios_contables`, `honorarios_legales`, `gastos_varios`, and more.
+  Hotel records additionally include `ist_4_debe` / `ist_4_haber` (4 % IST
+  tourism tax).
+</ResponseField>
+
+<ResponseField name="total_debe" type="number">
+  Aggregated sum of all Debe columns for the period.
+</ResponseField>
+
+<ResponseField name="total_haber" type="number">
+  Aggregated sum of all Haber columns for the period.
+</ResponseField>
+
+<ResponseField name="diferencia" type="number">
+  `total_debe − total_haber` (stored value, not recomputed).
+</ResponseField>
+
+```bash
+# Annual summary for all clients in 2024
+curl -X GET "https://your-host/api/reports/summaries?year=2024&periodo=anual" \
+  -H "Authorization: Bearer <token>"
+
+# First trimester for a specific client
+curl -X GET "https://your-host/api/reports/summaries?year=2024&clienteId=12&periodo=trimestral-1" \
+  -H "Authorization: Bearer <token>"
+
+# Second semester, all clients
+curl -X GET "https://your-host/api/reports/summaries?year=2024&periodo=semestral-2" \
+  -H "Authorization: Bearer <token>"
+```
+
+```json
+[
+  {
+    "cliente_id": 12,
+    "cliente_nombre": "Café del Valle S.A.",
+    "cliente_rtn": "08011985001234",
+    "usuario_nombre": "contadora",
+    "tipo": "general",
+    "caja_bancos_debe": 450000.00,
+    "caja_bancos_haber": 380000.00,
+    "ventas_gravadas_15_debe": 0,
+    "ventas_gravadas_15_haber": 210000.00,
+    "isv_15_ventas_debe": 0,
+    "isv_15_ventas_haber": 31500.00,
+    "total_debe": 980000.00,
+    "total_haber": 980000.00,
+    "diferencia": 0.00
+  },
+  {
+    "cliente_id": 5,
+    "cliente_nombre": "Hotel Las Palmas",
+    "cliente_rtn": "08012000009876",
+    "usuario_nombre": "contadora",
+    "tipo": "hotel",
+    "caja_bancos_debe": 720000.00,
+    "caja_bancos_haber": 680000.00,
+    "ist_4_debe": 0,
+    "ist_4_haber": 14400.00,
+    "total_debe": 1200000.00,
+    "total_haber": 1200000.00,
+    "diferencia": 0.00
+  }
+]
+```
+
+---
+
+## Related pages
+
+- [Features → Reports](/features/reports) — UI walkthrough of the reports module
+- [Features → Consolidations](/features/consolidations) — understanding general vs hotel consolidation records
+- [Clientes API](/api/clientes) — retrieving client IDs for use as `clienteId` filters
+- [Consolidaciones API](/api/consolidaciones) — creating and editing the source records
+- [Features → Export](/features/export) — exporting report data to Excel

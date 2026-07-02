@@ -1,47 +1,163 @@
----
-title: "Quickstart"
-description: "Begin with a guide on the fastest path to a successful outcome"
+title: "Get Started with ContabilidadISV in 5 Steps"
+sidebarTitle: "Quickstart"
+description: "Set up ContabilidadISV locally: install Node.js dependencies, configure SQL Server, run database migrations, and create your first accounting consolidation."
 ---
 
-Describe how someone begins using your product. What is the first thing they need to do? Are there any prerequisites?
-
-A quickstart should take someone from zero to using your product. They'll get a quick win and a sense of what they can accomplish.
+This guide walks you from a fresh clone to a running ContabilidadISV instance with a logged-in session, ready to create your first consolidation.
 
 ## Prerequisites
 
-Before you begin, you must have:
+| Requirement | Version / Notes |
+|---|---|
+| **Node.js** | 16 or higher |
+| **npm** | Bundled with Node.js 16+ |
+| **SQL Server** | Local instance or `SQLEXPRESS` named instance. SQL Server Express (free) is sufficient for development. |
+| **Git** | To clone the repository |
 
-- Requirement one (for example, Node.js 18+, a free account, an API key)
-- Requirement two (for example, a compatible device, a compatible browser, a compatible operating system)
+<Note>
+  On Windows, the recommended setup is **SQL Server Express** with the default instance name `SQLEXPRESS`. The `Database.js` connection config defaults to this instance automatically. If you use a different instance name or a full SQL Server edition, set `DB_INSTANCE` in your `.env` file accordingly.
+</Note>
 
-## Get started
+---
 
 <Steps>
-  <Step title="Install">
-    Describe how to install your product or sign up.
+  <Step title="Clone the repository and install all dependencies">
+    ContabilidadISV is a monorepo with a root `package.json` that coordinates the `backend/` and `frontend/` workspaces. A single convenience script installs both.
 
-    ```bash
-    npm install your-package
-    ```
+    <CodeGroup>
+      ```bash npm
+      git clone https://github.com/Medinaallan/ContabilidadISV.git
+      cd ContabilidadISV
+      npm run install-all
+      ```
+
+      ```bash npx
+      npx degit Medinaallan/ContabilidadISV ContabilidadISV
+      cd ContabilidadISV
+      npm run install-all
+      ```
+    </CodeGroup>
+
+    `npm run install-all` runs `cd backend && npm install` followed by `cd ../frontend && npm install`, so both sub-projects end up with their own `node_modules`.
   </Step>
-  <Step title="Configure">
-    Describe any setup or configuration needed before first use.
+
+  <Step title="Configure the environment">
+    Create the file `backend/.env`. The backend reads this file at startup via `dotenv`. All database keys map directly to the `mssql` connection config in `backend/src/models/Database.js`.
 
     ```bash
-    your-cli init
+    # backend/.env
+
+    # SQL Server connection
+    DB_SERVER=localhost
+    DB_NAME=ContabilidadISV
+    DB_USER=sa
+    DB_PASSWORD=YourStrongPassword123!
+    DB_INSTANCE=SQLEXPRESS
+
+    # Set to true only if connecting to Azure SQL or a TLS-enforced server
+    DB_ENCRYPT=false
+
+    # Set to false only if your server has a trusted CA certificate
+    DB_TRUST_CERT=true
+
+    # Connection and request timeouts (milliseconds)
+    DB_CONNECTION_TIMEOUT=30000
+
+    # JWT signing secret — use a long random string in production
+    JWT_SECRET=replace_this_with_a_long_random_secret_value
     ```
+
+    <Warning>
+      If `DB_USER` and `DB_PASSWORD` are omitted, the backend falls back to **Windows Authentication** (Integrated Security). This is fine for local development on Windows, but you must ensure the Windows user running Node.js has `db_owner` or equivalent rights on the `ContabilidadISV` database.
+    </Warning>
+
+    **Key defaults from `Database.js`:**
+    - `DB_SERVER` → `localhost`
+    - `DB_NAME` → `ContabilidadISV`
+    - `DB_INSTANCE` → `SQLEXPRESS`
+    - `DB_TRUST_CERT` → `true` (local dev default)
+    - `DB_ENCRYPT` → `false` (Azure requires `true`)
   </Step>
-  <Step title="Run it">
-    Show the first thing a user does to see it working.
+
+  <Step title="Initialize the database">
+    Run the database migration script. This creates the `ContabilidadISV` database (if it does not exist), sets up all required tables (`users`, `consolidaciones_generales`, `consolidaciones_hoteles`, `clientes`, `system_logs`, `uploaded_files`), and seeds the default admin user.
 
     ```bash
-    your-cli start
+    npm run init-db
     ```
+
+    This is a shortcut for `cd backend && npm run init-db`. You should see output confirming that each table was created and that the seed admin account was inserted. If you see a connection error, double-check `DB_SERVER`, `DB_INSTANCE`, and that SQL Server is running.
+
+    <Tip>
+      You can combine installation and initialization into a single command:
+      ```bash
+      npm run setup
+      ```
+      `setup` runs `install-all` followed by `init-db` in sequence.
+    </Tip>
+  </Step>
+
+  <Step title="Start the application in development mode">
+    The root `dev` script uses `concurrently` to start both servers simultaneously. The backend listens on port **3002** and the Vite dev server listens on port **5174** (with `/api` proxied to the backend).
+
+    ```bash
+    npm run dev
+    ```
+
+    You should see two sets of startup logs interleaved in your terminal:
+
+    ```
+    [dev:backend]  ✅ Conectado a SQL Server correctamente
+    [dev:backend]  Server running on port 3002
+    [dev:frontend] VITE v5.x.x  ready in Xms
+    [dev:frontend] ➜  Local:   http://localhost:5174/
+    ```
+
+    <Note>
+      Individual services can also be started separately:
+      - Backend only: `npm run dev:backend` (Express on port 3002)
+      - Frontend only: `npm run dev:frontend` (Vite on port 5174)
+    </Note>
+  </Step>
+
+  <Step title="Open the app and log in">
+    Open **http://localhost:5174** in your browser. You will be redirected to the login page.
+
+    Sign in with the default admin credentials created by `init-db`. After a successful login, the backend issues a JWT which the frontend stores in `localStorage` and attaches as a `Bearer` token on every subsequent API request via the Axios interceptor in `frontend/src/services/api.ts`.
+
+    Once authenticated you will land on the **Dashboard** — the Home section showing summary metrics. The top navigation bar exposes the **Consolidaciones** dropdown (Crear Consolidación, Historial, Reportes), the **Clientes** dropdown (Ver y Añadir, Cargar desde CSV), and — for admin users — **Logs del Sistema**, **Gestión de Usuarios**, and **Soporte técnico**.
   </Step>
 </Steps>
 
-<Tip>
-  Give people a way to get help. This could be a link to a support page, a chat with a customer support agent, or a forum for your product.
+---
 
-  Example: Need help? Reach out to us at [support@yourcompany.com](mailto:support@yourcompany.com).
+## Creating your first consolidation
+
+After logging in, follow these sub-steps to record your first tax consolidation:
+
+1. **Select a client** — Go to **Clientes → Ver y Añadir** and confirm your client exists. If not, click **Nuevo Cliente**, fill in the company name, RTN (Registro Tributario Nacional), industry sector, and representative details, then save.
+
+2. **Open the consolidation form** — Go to **Consolidaciones → Crear Consolidación**. The upload/create section (mapped to `UploadSection` in the frontend) loads the entry form.
+
+3. **Choose the consolidation type** — Select either **Generales** (standard businesses, ISV 15 % / 18 %) or **Hoteles** (tourism businesses, ISV + IST 4 %). The form layout adjusts automatically to show or hide the IST column.
+
+4. **Fill in Debe and Haber values** — Work through the 55 accounts. ISV and IST totals are calculated in real time as you type.
+
+5. **Save the consolidation** — Click **Guardar**. The record is written to `consolidaciones_generales` or `consolidaciones_hoteles` depending on your selection, and a `system_logs` entry is created for auditability.
+
+6. **Export** — Navigate to **Consolidaciones → Reportes** to generate an Excel workbook or PDF for the period you just created. See the [Reports & Export guide](/features/reports) for template options.
+
+---
+
+<Tip>
+  **Running in Electron (desktop mode)**
+
+  To launch the full application inside an Electron window during development — useful for testing offline behaviour or Windows-specific packaging — run:
+
+  ```bash
+  npm run electron:dev
+  ```
+
+  This starts the backend (port 3002) and Vite dev server (port 5174) via `concurrently`, then waits for both services before opening the Electron window. The Electron shell communicates with the backend through the same REST API used by the browser. When you are ready to distribute a standalone Windows installer, run `npm run electron:build:win` to produce an NSIS `.exe` in `dist-electron/`. See the [Electron deployment guide](/deployment/electron) for full details.
 </Tip>
+

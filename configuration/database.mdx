@@ -1,0 +1,146 @@
+---
+title: "SQL Server Database Setup for ContabilidadISV"
+sidebarTitle: "Database"
+description: "Set up the SQL Server database for ContabilidadISV: create the schema, configure connection pooling, verify tables, and understand the two consolidation table design."
+---
+
+ContabilidadISV stores all accounting data — consolidations, clients, users, audit logs, and uploaded files — in a single **SQL Server** database named `ContabilidadISV`. The backend uses the [`mssql`](https://www.npmjs.com/package/mssql) Node.js driver with a shared connection pool managed by the `Database` class in `backend/src/models/Database.js`.
+
+## Prerequisites
+
+- **SQL Server 2017 or later** (any edition), or **SQL Server Express** (free tier). The default instance name expected by `Database.js` is `SQLEXPRESS`.
+- The database must be named **`ContabilidadISV`** (or match whatever `DB_NAME` is set to in `backend/.env`).
+- The SQL Server service must be reachable from the host where the backend runs. See [Environment Variables](/configuration/environment) for connection settings.
+
+## Setup Steps
+
+<Steps>
+  ### Create the database
+
+  Open SQL Server Management Studio (SSMS) or Azure Data Studio and run:
+
+  ```sql
+  CREATE DATABASE ContabilidadISV;
+  ```
+
+  If you are using SQL Server Express with a named instance make sure the **SQL Server Browser** service is running so that the `mssql` driver can resolve `localhost\SQLEXPRESS`.
+
+  ### Run the initialization script
+
+  From the project root, run the `init-db` script. This executes `backend/scripts/initDatabase.js`, which creates all required tables, stored procedures, and default data:
+
+  ```bash
+  npm run init-db
+  ```
+
+  You should see progress output followed by a success message in the terminal. If the connection fails, verify your `backend/.env` values and that SQL Server is accepting TCP/IP connections on the configured port.
+
+  ### (Optional) Apply the new-accounts migration
+
+  If you are upgrading an existing installation to include the expanded chart of accounts (55 accounts for HOTELES, 54 for GENERALES), run the migration script directly in SSMS or Azure Data Studio:
+
+  ```bash
+  # Open and execute in your SQL client:
+  database/sqlserver/07_add_new_accounts.sql
+  ```
+
+  This script adds 60 new `_debe` / `_haber` column pairs to the consolidation tables and is safe to run against a database that already contains data — all new columns default to `0.00`.
+
+  ### Verify the connection
+
+  Start the backend server:
+
+  ```bash
+  cd backend
+  npm start
+  ```
+
+  A successful connection prints the following to the console:
+
+  ```
+  Conectando a SQL Server...
+  Servidor: localhost
+  Base de datos: ContabilidadISV
+  ✅ Conectado a SQL Server correctamente
+  ```
+
+  If any expected tables are missing, the `verifyTables()` method will log a warning listing the absent tables so you can re-run the init script.
+</Steps>
+
+## Table Overview
+
+| Table | Purpose |
+|---|---|
+| `users` | Application accounts with `id`, `username`, `email`, `password` (bcrypt hash), `role`, `created_at`, `updated_at` |
+| `consolidaciones_generales` | ISV consolidation records for general-sector clients. Contains 54 accounting accounts × 2 columns (`_debe` / `_haber`) = **108 numeric data columns** |
+| `consolidaciones_hoteles` | ISV/IST consolidation records for hotel-sector clients. Contains 55 accounting accounts (including `ist_4` for the 4 % IST rate) × 2 columns = **110 numeric data columns** |
+| `clientes` | Client company registry: `nombre_empresa`, `rtn`, `rubro`, `representante`, `telefono`, `email`, `direccion`, `logo_url`, `activo` |
+| `system_logs` | Immutable audit trail of every significant action, keyed to `user_id`, with `action`, `description`, `ip_address`, and `user_agent` columns |
+| `uploaded_files` | Metadata for Excel files uploaded for processing: `original_name`, `filename`, `filepath`, `filesize`, `user_id`, `upload_date` |
+
+<Note>
+The two consolidation tables (`consolidaciones_generales` and `consolidaciones_hoteles`) share the same period / client / user metadata columns but differ in the set of account columns present. Always pass `tipo: 'GENERALES' | 'HOTELES'` when calling consolidation API endpoints so the backend queries the correct table. See [Consolidations](/features/consolidations) for details.
+</Note>
+
+## Connection Pooling
+
+`Database.js` creates a single shared `mssql` connection pool via `sql.connect()`:
+
+```javascript
+// Excerpt from backend/src/models/Database.js
+async init() {
+  console.log('Conectando a SQL Server...');
+  console.log(`Servidor: ${this.config.server}`);
+  console.log(`Base de datos: ${this.config.database}`);
+
+  // Create the shared connection pool
+  this.pool = await sql.connect(this.config);
+  this.isConnected = true;
+
+  console.log('✅ Conectado a SQL Server correctamente');
+
+  // Verify that expected tables exist
+  await this.verifyTables();
+}
+```
+
+`init()` is called **lazily** — every public method checks `if (!this.pool || !this.isConnected)` before running its query and calls `init()` automatically if needed. This means the pool is established on the first request rather than at server startup, and it is shared for the lifetime of the process.
+
+The connection configuration is built from environment variables in the constructor:
+
+```javascript
+// Excerpt from backend/src/models/Database.js
+this.config = {
+  server: process.env.DB_SERVER || 'localhost',
+  database: process.env.DB_NAME || 'ContabilidadISV',
+  user: process.env.DB_USER,          // undefined → Windows Auth
+  password: process.env.DB_PASSWORD,
+  options: {
+    encrypt: process.env.DB_ENCRYPT === 'true' || false,
+    trustServerCertificate: process.env.DB_TRUST_CERT === 'false' ? false : true,
+    enableArithAbort: true,
+    instanceName: process.env.DB_INSTANCE || 'SQLEXPRESS',
+  },
+  connectionTimeout: parseInt(process.env.DB_CONNECTION_TIMEOUT) || 30000,
+  requestTimeout: 30000,
+};
+```
+
+## Windows Authentication
+
+If `DB_USER` is not set in `backend/.env`, the driver authenticates using the Windows identity of the process running the backend. The constructor detects the missing credential and sets `authentication.type = 'default'` automatically:
+
+```javascript
+// Excerpt from backend/src/models/Database.js
+if (!this.config.user) {
+  this.config.authentication = {
+    type: 'default'
+  };
+}
+```
+
+This is the recommended mode when the backend runs on a Windows Server that is a member of the same Active Directory domain as the SQL Server instance. No username or password needs to appear anywhere in the configuration files.
+
+<Warning>
+SQL Server Express has a **10 GB** per-database size limit. For organizations with a large volume of historical consolidations and uploaded Excel files, plan an upgrade to SQL Server Standard or Developer edition before approaching that limit. The database schema is fully compatible with all SQL Server editions.
+</Warning>

@@ -1,0 +1,258 @@
+---
+title: "Deploy ContabilidadISV as a Web Application"
+sidebarTitle: "Web Deployment"
+description: "Build and deploy ContabilidadISV's React frontend and Express backend for production use on a local network or server, with SQL Server on Windows."
+---
+
+ContabilidadISV can be deployed as a traditional web application — a React SPA served as static files alongside an Express.js REST API backend. In this mode the two services run as separate OS processes: the backend listens on **port 3002** and the frontend is either served from the same Express process via its static handler, or from a dedicated web server such as nginx. Clients connect from any browser on the same network; no Electron or desktop packaging is needed.
+
+<Note>
+  If you need a fully self-contained Windows desktop installer instead, see the
+  [Electron deployment guide](/deployment/electron).
+</Note>
+
+---
+
+## Prerequisites
+
+Before deploying make sure the following are in place:
+
+- **Node.js 16 or later** — required on the server that will run the Express backend.
+- **SQL Server** (Express or full edition) — must be reachable from the server. See [Database Configuration](/configuration/database) for connection details.
+- **A Windows or Linux server** — both are supported. Windows-specific scripts use `.bat`; Linux/macOS use `.sh`.
+- **Network access** — clients must be able to reach the server's IP address on **port 4173** (Vite preview) or whichever port nginx/your reverse proxy exposes.
+- All npm dependencies installed:
+
+<CodeGroup>
+```bash Root dependencies
+npm install
+```
+```bash Frontend + Backend dependencies
+npm run install-all
+```
+</CodeGroup>
+
+---
+
+## Production Build
+
+Follow these steps to prepare both services for production:
+
+<Steps>
+  <Step title="Build the React frontend">
+    Compile the React + TypeScript SPA. This runs Vite in production mode, tree-shakes dependencies, and writes the output to `frontend/dist/`.
+
+    ```bash
+    npm run build:frontend
+    ```
+
+    Verify the output folder exists and contains `index.html` before continuing.
+
+    ```bash
+    ls frontend/dist/
+    ```
+  </Step>
+
+  <Step title="Configure the backend environment">
+    Set `NODE_ENV=production` in `backend/.env` (or `backend/.env.production`) so that Express disables development-only middleware, enables response compression, and enforces stricter error handling.
+
+    ```bash
+    # backend/.env  (minimum required keys for production)
+    NODE_ENV=production
+    PORT=3002
+    HOST=0.0.0.0
+    JWT_SECRET=<change-to-a-long-random-string>
+    DB_SERVER=localhost\SQLEXPRESS
+    DB_NAME=ContabilidadISV
+    DB_USER=contabilidad_app
+    DB_PASSWORD=<your-db-password>
+    DB_ENCRYPT=false
+    DB_TRUST_CERT=true
+    FRONTEND_URL=http://<your-server-ip>
+    ```
+
+    See [Environment Variables](/configuration/environment) for a full reference of every supported key.
+  </Step>
+
+  <Step title="Start the Express backend">
+    The backend script reads `backend/.env`, connects to SQL Server, and starts listening on port 3002.
+
+    ```bash
+    npm run start:backend
+    ```
+
+    You should see output similar to:
+
+    ```
+    Server running on http://0.0.0.0:3002
+    Database connected successfully
+    ```
+  </Step>
+
+  <Step title="Serve the built frontend">
+    The Vite preview server serves `frontend/dist/` on **port 4173**. It is adequate for internal/LAN use.
+
+    ```bash
+    cd frontend && npm run preview
+    ```
+
+    For internet-facing or multi-user deployments, configure nginx to serve the `frontend/dist/` folder directly (see the [Reverse Proxy section](#reverse-proxy-with-nginx) below) and skip this step.
+  </Step>
+</Steps>
+
+---
+
+## Using the Production Scripts
+
+The repository ships with convenience scripts that build the frontend, start both processes in the background, and open the correct ports automatically.
+
+### Starting the system
+
+<CodeGroup>
+```powershell Windows
+.\iniciar-produccion.bat
+```
+```bash Linux / macOS
+chmod +x iniciar-produccion.sh
+./iniciar-produccion.sh
+```
+</CodeGroup>
+
+Both scripts execute the same four-step sequence:
+
+1. Build the frontend (`npm run build` inside `frontend/`)
+2. Launch the Express backend in a background process with `NODE_ENV=production`
+3. Wait 3 seconds for the backend to become ready
+4. Launch the Vite preview server for the compiled frontend
+
+After startup the system is available at:
+
+| Service  | URL                          |
+| -------- | ---------------------------- |
+| Backend API | `http://localhost:3002` |
+| Frontend    | `http://localhost:4173` |
+
+On Linux the script writes `.backend.pid` and `.frontend.pid` files so that `detener-produccion.sh` can stop the exact processes later.
+
+### Stopping the system
+
+<CodeGroup>
+```powershell Windows
+.\detener-produccion.bat
+```
+```bash Linux / macOS
+./detener-produccion.sh
+```
+</CodeGroup>
+
+The Windows script kills processes by their window title (`Backend-Produccion` / `Frontend-Produccion`) and force-kills anything still holding ports 3002 or 4173. The Linux script reads the saved PID files and sends a `kill` signal.
+
+---
+
+## Reverse Proxy with nginx
+
+For production use on a dedicated server it is recommended to front both services with nginx. nginx terminates TLS, serves the static `frontend/dist/` files directly (no Node.js involved), and proxies `/api` requests to Express.
+
+```nginx
+server {
+    listen 80;
+    server_name contabilidad.example.com;
+
+    # Serve the built React SPA
+    root /var/www/contabilidadisv/frontend/dist;
+    index index.html;
+
+    # Handle client-side routing — all unknown paths serve index.html
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Proxy API calls to the Express backend
+    location /api/ {
+        proxy_pass         http://localhost:3002;
+        proxy_http_version 1.1;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_read_timeout 90s;
+    }
+}
+```
+
+<Tip>
+  To enable HTTPS, install [Certbot](https://certbot.eff.org/) and run
+  `certbot --nginx -d contabilidad.example.com`. After that, set
+  `FRONTEND_URL=https://contabilidad.example.com` in `backend/.env` so CORS
+  headers remain consistent.
+</Tip>
+
+Copy the built frontend files to the nginx web root:
+
+```bash
+cp -r frontend/dist /var/www/contabilidadisv/frontend/dist
+nginx -t && systemctl reload nginx
+```
+
+---
+
+## Environment Checklist
+
+Review this checklist before going live:
+
+<CardGroup cols={2}>
+  <Card title="JWT Secret" icon="key">
+    `JWT_SECRET` must be set to a long, randomly generated string. Never use the default or a short password. Tokens are signed with this value — rotating it invalidates all active sessions.
+  </Card>
+  <Card title="Database Credentials" icon="database">
+    Confirm `DB_SERVER`, `DB_NAME`, `DB_USER`, and `DB_PASSWORD` match your production SQL Server instance. Run `cd backend && node test-sqlserver-connection.js` to verify connectivity before starting the server.
+  </Card>
+  <Card title="TLS / Encryption" icon="lock">
+    Set `DB_ENCRYPT=true` and `DB_TRUST_CERT=false` when connecting to Azure SQL or any SQL Server instance with a CA-signed certificate. See [Database Configuration](/configuration/database).
+  </Card>
+  <Card title="CORS Origin" icon="globe">
+    `FRONTEND_URL` controls the `Access-Control-Allow-Origin` header returned by Express. Set it to the exact origin your frontend is served from (e.g., `https://contabilidad.example.com`). Wildcards should not be used in production. See [Security Configuration](/configuration/security).
+  </Card>
+</CardGroup>
+
+Additional items to verify:
+
+- `NODE_ENV` is **exactly** `production` — a typo will silently fall back to development mode.
+- The `backend/uploads/` directory is writable by the process user.
+- SQL Server TCP/IP connections are enabled (SQL Server Configuration Manager → Protocols → TCP/IP → Enabled).
+- Windows Firewall allows inbound connections on port 3002 if clients connect directly (not via nginx).
+- Log rotation is configured if the server is expected to run for extended periods.
+
+<Warning>
+  **Never run `npm run dev` or `npm run dev:backend` in production.** The
+  development servers enable source maps, detailed stack traces, verbose query
+  logging, and hot-module replacement — all of which expose internal
+  implementation details and degrade performance under load.
+</Warning>
+
+<Tip>
+  When connecting to **Azure SQL Database** or a hardened SQL Server with a
+  CA-issued certificate, set both `DB_ENCRYPT=true` and `DB_TRUST_CERT=false`
+  in `backend/.env`. These two flags together ensure that the TLS connection is
+  both encrypted and that the server certificate is validated against trusted
+  certificate authorities.
+</Tip>
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Environment Variables" icon="sliders" href="/configuration/environment">
+    Full reference for every `backend/.env` key including JWT, database, and CORS settings.
+  </Card>
+  <Card title="Database Configuration" icon="database" href="/configuration/database">
+    SQL Server setup, user permissions, and connection string options.
+  </Card>
+  <Card title="Security Configuration" icon="shield" href="/configuration/security">
+    JWT expiry, CORS policy, HTTPS, and audit log settings.
+  </Card>
+  <Card title="Electron Desktop Deployment" icon="desktop" href="/deployment/electron">
+    Bundle the entire stack as a self-contained Windows installer.
+  </Card>
+</CardGroup>

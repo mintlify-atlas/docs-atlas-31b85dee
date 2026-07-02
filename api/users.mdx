@@ -1,0 +1,296 @@
+---
+title: "Users API — Admin User Management Endpoints"
+sidebarTitle: "Users"
+description: "REST endpoints for managing system users. Admin-only operations to create, list, update, and delete user accounts with role-based access control."
+---
+
+User management endpoints allow administrators to control who can access ContabilidadISV. All routes under `/api/users` require a valid JWT token. Most operations (list, create, update, delete) are restricted to users with `role='admin'`. Any authenticated user — regardless of role — may call `GET /api/users/profile` to read their own account data. ContabilidadISV recognises exactly two roles: **`admin`** and **`user`**.
+
+<Warning>
+  Only admins can list, create, update, or delete users other than their own
+  profile. Attempting any of those operations with a `user` role returns
+  `403 Forbidden`.
+</Warning>
+
+---
+
+## GET /api/users/profile
+
+Returns the currently authenticated user's own profile. Available to any authenticated user.
+
+**Request** — no body or query parameters required; the identity is derived from the JWT.
+
+**Response**
+
+<ResponseField name="success" type="boolean">
+  Always `true` on a successful response.
+</ResponseField>
+
+<ResponseField name="user" type="object">
+  The authenticated user's profile object.
+
+  <Expandable title="user fields">
+    <ResponseField name="id" type="number">
+      Unique numeric user identifier.
+    </ResponseField>
+    <ResponseField name="username" type="string">
+      The user's display name (minimum 3 characters).
+    </ResponseField>
+    <ResponseField name="email" type="string">
+      The user's email address.
+    </ResponseField>
+    <ResponseField name="role" type="string">
+      Either `"admin"` or `"user"`.
+    </ResponseField>
+    <ResponseField name="created_at" type="string">
+      ISO 8601 timestamp of when the account was created.
+    </ResponseField>
+    <ResponseField name="updated_at" type="string">
+      ISO 8601 timestamp of the last account modification.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+```bash
+curl -X GET https://your-host/api/users/profile \
+  -H "Authorization: Bearer <token>"
+```
+
+```json
+{
+  "success": true,
+  "user": {
+    "id": 3,
+    "username": "contadora",
+    "email": "contadora@empresa.hn",
+    "role": "user",
+    "created_at": "2024-01-15T10:30:00.000Z",
+    "updated_at": "2024-06-01T08:00:00.000Z"
+  }
+}
+```
+
+---
+
+## GET /api/users
+
+Returns a list of every user account in the system. **Admin only.**
+
+**Response**
+
+<ResponseField name="success" type="boolean">
+  Always `true` on a successful response.
+</ResponseField>
+
+<ResponseField name="users" type="array">
+  Array of user objects. Each entry contains the same fields as the profile
+  response: `id`, `username`, `email`, `role`, `created_at`.
+</ResponseField>
+
+```bash
+curl -X GET https://your-host/api/users \
+  -H "Authorization: Bearer <admin-token>"
+```
+
+```json
+{
+  "success": true,
+  "users": [
+    {
+      "id": 1,
+      "username": "admin",
+      "email": "admin@empresa.hn",
+      "role": "admin",
+      "created_at": "2024-01-01T00:00:00.000Z"
+    },
+    {
+      "id": 2,
+      "username": "contadora",
+      "email": "contadora@empresa.hn",
+      "role": "user",
+      "created_at": "2024-01-15T10:30:00.000Z"
+    }
+  ]
+}
+```
+
+---
+
+## POST /api/users
+
+Creates a new user account. **Admin only.**
+
+**Request body**
+
+<ParamField body="username" type="string" required>
+  Display name for the new user. Must be at least **3 characters** long and
+  unique across all accounts.
+</ParamField>
+
+<ParamField body="email" type="string" required>
+  Valid email address. Must be unique across all accounts.
+</ParamField>
+
+<ParamField body="password" type="string" required>
+  Plain-text password for the account. Must be at least **6 characters**.
+  Stored as a bcrypt hash (10 salt rounds).
+</ParamField>
+
+<ParamField body="role" type="string">
+  Role to assign. Accepted values: `"admin"` or `"user"`. Defaults to
+  `"user"` when omitted.
+</ParamField>
+
+**Response** — `201 Created`
+
+<ResponseField name="success" type="boolean">
+  `true` on successful creation.
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Human-readable confirmation message.
+</ResponseField>
+
+<ResponseField name="user" type="object">
+  The newly created user object (`id`, `username`, `email`, `role`,
+  `created_at`). The password hash is **never** returned.
+</ResponseField>
+
+```bash
+curl -X POST https://your-host/api/users \
+  -H "Authorization: Bearer <admin-token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "nueva_contadora",
+    "email": "nueva@empresa.hn",
+    "password": "segura123",
+    "role": "user"
+  }'
+```
+
+```json
+{
+  "success": true,
+  "message": "Usuario creado exitosamente",
+  "user": {
+    "id": 5,
+    "username": "nueva_contadora",
+    "email": "nueva@empresa.hn",
+    "role": "user",
+    "created_at": "2024-07-10T14:22:00.000Z"
+  }
+}
+```
+
+**Error codes**
+
+| Status | Reason |
+|--------|--------|
+| `400` | Validation failure (short username/password, invalid email, duplicate email or username) |
+| `403` | Caller does not have `admin` role |
+
+---
+
+## PUT /api/users/:id
+
+Updates an existing user account. **Admin only.** All fields are optional; only
+the fields provided are changed. If no fields differ from the current values,
+the request still succeeds and returns the unmodified user object.
+
+**Path parameter**
+
+<ParamField path="id" type="number" required>
+  Numeric ID of the user to update.
+</ParamField>
+
+**Request body** (all fields optional)
+
+<ParamField body="username" type="string">
+  New username. Minimum 3 characters. Must not conflict with another account.
+</ParamField>
+
+<ParamField body="email" type="string">
+  New email address. Must be a valid email and unique across all accounts.
+</ParamField>
+
+<ParamField body="password" type="string">
+  New plain-text password. Minimum 6 characters. Will be re-hashed with bcrypt.
+</ParamField>
+
+<ParamField body="role" type="string">
+  New role: `"admin"` or `"user"`.
+</ParamField>
+
+**Response**
+
+<ResponseField name="success" type="boolean">
+  `true` on success.
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  `"Usuario actualizado exitosamente"` or `"No se realizaron cambios"`.
+</ResponseField>
+
+<ResponseField name="user" type="object">
+  The updated (or unchanged) user object.
+</ResponseField>
+
+```bash
+curl -X PUT https://your-host/api/users/5 \
+  -H "Authorization: Bearer <admin-token>" \
+  -H "Content-Type: application/json" \
+  -d '{ "role": "admin" }'
+```
+
+**Error codes**
+
+| Status | Reason |
+|--------|--------|
+| `400` | Validation failure or duplicate username/email |
+| `403` | Caller does not have `admin` role |
+| `404` | No user found with the given ID |
+
+---
+
+## DELETE /api/users/:id
+
+Permanently removes a user account. **Admin only.** An admin cannot delete
+their own account.
+
+**Path parameter**
+
+<ParamField path="id" type="number" required>
+  Numeric ID of the user to delete.
+</ParamField>
+
+**Response**
+
+<ResponseField name="success" type="boolean">
+  `true` on successful deletion.
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  `"Usuario eliminado exitosamente"`.
+</ResponseField>
+
+```bash
+curl -X DELETE https://your-host/api/users/5 \
+  -H "Authorization: Bearer <admin-token>"
+```
+
+**Error codes**
+
+| Status | Reason |
+|--------|--------|
+| `400` | Attempting to delete the currently authenticated admin's own account |
+| `403` | Caller does not have `admin` role |
+| `404` | No user found with the given ID |
+
+---
+
+## Related pages
+
+- [Auth API](/api/auth) — login, logout, and token validation
+- [Admin API](/api/admin) — system-level security and database management
+- [System Logs API](/api/logs) — audit trail for user management actions
+- [Configuration → Security](/configuration/security) — JWT secret and token lifetime settings

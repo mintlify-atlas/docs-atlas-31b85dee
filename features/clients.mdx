@@ -1,0 +1,122 @@
+---
+title: "Managing Client Companies in ContabilidadISV"
+sidebarTitle: "Clients"
+description: "Create and maintain client (empresa) records in ContabilidadISV. Each client has an RTN, sector (rubro), representative, contact details, and a consolidation history."
+---
+
+A **cliente** (client) in ContabilidadISV represents a Honduran business entity (empresa) on whose behalf accounting consolidations are prepared. Every consolidation record is linked to exactly one client. Client data is stored in the `clientes` table in SQL Server and exposed through the `clientesApi` service on the frontend and the `/api/clientes` router on the backend.
+
+---
+
+## Client Fields
+
+The table below describes every field on the client entity:
+
+| Field | Type | Constraints | Description |
+|-------|------|-------------|-------------|
+| `nombre_empresa` | string | 2–255 characters, required | Legal name of the business |
+| `rtn` | string | 3–50 characters, digits and hyphens only (`^[0-9\-]+$`), required | Honduran tax identification number (Registro Tributario Nacional) |
+| `rubro` | string | 2–100 characters, required | Business sector (e.g., Comercio, Servicios, Industria, Hotel) |
+| `representante` | string | 2–255 characters, required | Name of the legal representative |
+| `telefono` | string | 8–20 characters, digits/dashes/parentheses/`+` allowed, required | Contact phone number |
+| `email` | string | valid email format, required | Contact email address |
+| `direccion` | string | 5–500 characters, required | Full business address |
+| `activo` | boolean | default `true` | Whether the client is active in the system |
+| `logo_url` | string \| null | optional | Relative path to the client's uploaded logo image |
+| `fecha_registro` | datetime | auto-set on creation | Timestamp when the client was first created |
+| `fecha_actualizacion` | datetime | auto-updated | Timestamp of the last update |
+
+---
+
+## Creating a Client
+
+<Steps>
+  <Step title="Navigate to Clientes → Ver y Añadir">
+    Click **Clientes** in the sidebar and select **Ver y Añadir** to open the `ClientsViewSection`.
+  </Step>
+  <Step title="Click Agregar Cliente">
+    Click the **Agregar Cliente** button in the top-right of the clients list panel. A modal dialog opens.
+  </Step>
+  <Step title="Fill in all required fields">
+    Complete the form:
+    - **Nombre de la Empresa** — the company's legal name
+    - **R.T.N.** — Honduran tax ID (numbers and hyphens only)
+    - **Rubro** — business sector
+    - **Representante** — legal representative's full name
+    - **Teléfono** — contact telephone number
+    - **Correo Electrónico** — contact email
+    - **Dirección** — complete postal address
+
+    All fields are required.
+  </Step>
+  <Step title="Save the client">
+    Click **Crear Cliente**. The system will validate all fields, then save the record. The clients list refreshes automatically.
+  </Step>
+</Steps>
+
+<Note>
+  If the RTN you enter already exists in the database, the system shows a **RTN Duplicado** confirmation dialog. You can choose to proceed and register a second client with the same RTN, or cancel and review the existing record.
+</Note>
+
+---
+
+## RTN Validation
+
+The **RTN (Registro Tributario Nacional)** is Honduras's national tax identification number for businesses and individuals. ContabilidadISV enforces the following validation rule on this field:
+
+```
+^[0-9\-]+$
+```
+
+This means the field may only contain **digits (0–9) and hyphens (-)**. Spaces, letters, or special characters are not accepted. A typical Honduran business RTN looks like `0801-2024-00123` or `08019999999999`.
+
+The RTN is displayed alongside the company name throughout the application — in consolidation headers, export files, and report summaries.
+
+---
+
+## Editing a Client
+
+Clicking the pencil (edit) icon in the clients list opens the **Edit Client** modal. To protect data integrity, the following fields are **not editable** after creation:
+
+- `nombre_empresa`
+- `rtn`
+- `rubro`
+- `representante`
+- `email`
+
+Only `telefono` and `direccion` may be changed through the edit form. The client's active/inactive status can also be toggled from within the edit modal.
+
+---
+
+## Viewing Client Consolidations
+
+From the client list, click the eye (view) icon to open the **Client Details** modal, which shows all stored fields for that client. Administrators can also access the full consolidation history for a specific client via the `GET /api/consolidaciones/cliente/:clienteId` endpoint, which returns all GENERALES and HOTELES consolidations linked to that client, sorted by creation date descending.
+
+---
+
+## Deactivating a Client
+
+<Note>
+  Deactivating a client by setting `activo = false` (click the green **Activo** badge to toggle) hides them from new-consolidation client dropdowns — only active clients (`activo = true`) are returned by `GET /api/clientes?activo=true`. All historical consolidation data for the client is fully preserved and remains accessible in the history and reports views.
+</Note>
+
+Clients are never hard-deleted through the UI. The `clientesApi.delete(id)` call performs a soft deactivation, not a physical row removal.
+
+---
+
+## Related Pages
+
+<CardGroup cols={2}>
+  <Card title="Consolidations" icon="table" href="/features/consolidations">
+    Learn how consolidations are created and linked to clients.
+  </Card>
+  <Card title="Reports" icon="chart-bar" href="/features/reports">
+    Filter report summaries and rankings by individual client.
+  </Card>
+  <Card title="Clientes API" icon="code" href="/api/clientes">
+    REST endpoints for creating, reading, updating, and deactivating clients.
+  </Card>
+  <Card title="Audit Logs" icon="scroll" href="/features/audit-logs">
+    Track cliente_created and cliente_updated events in the bitácora.
+  </Card>
+</CardGroup>

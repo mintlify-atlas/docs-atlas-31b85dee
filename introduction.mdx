@@ -1,0 +1,104 @@
+---
+title: "ContabilidadISV: Tax Accounting Consolidation for Honduras"
+sidebarTitle: "Introduction"
+description: "ContabilidadISV streamlines ISV and IST tax consolidation for Honduran accountants — double-entry ledgers, automated tax formulas, client management, and Excel/PDF exports."
+---
+
+ContabilidadISV is a full-stack accounting consolidation platform purpose-built for Honduran accountants and bookkeeping firms. Honduran tax law requires businesses to report Impuesto Sobre Ventas (ISV) at 15 % or 18 %, and hotel operators to additionally file Impuesto Sobre Turismo (IST) at 4 %. Manually reconciling these obligations across dozens of clients every month — each with its own 55-account chart of accounts — is error-prone and time-consuming. ContabilidadISV automates every step: it imports raw ledger data, applies the correct ISV and IST formulas, consolidates Debe/Haber entries across all accounts, and produces audit-ready reports that accountants can export to Excel or PDF and deliver directly to SAR (Servicio de Administración de Rentas).
+
+<CardGroup cols={2}>
+  <Card
+    title="Quickstart"
+    icon="rocket"
+    href="/quickstart"
+  >
+    Install dependencies, configure SQL Server, run the database migration, and create your first consolidation in five steps.
+  </Card>
+  <Card
+    title="Architecture"
+    icon="building"
+    href="/architecture"
+  >
+    Understand the three-tier structure: React SPA, Express REST API, SQL Server database, and the optional Electron desktop shell.
+  </Card>
+</CardGroup>
+
+## What ContabilidadISV solves
+
+Honduran accounting firms typically maintain separate spreadsheets for each client — one set for Consolidaciones Generales (standard businesses) and another for Consolidaciones Hoteles (hospitality sector, which adds the IST 4 % column). Keeping those sheets consistent, calculating running totals, and preventing transcription errors are persistent pain points. ContabilidadISV replaces those spreadsheets with a shared, role-controlled web application that:
+
+- Enforces the **55-account Honduran chart of accounts** on every entry
+- Automatically calculates **ISV 15 %**, **ISV 18 %**, and **IST 4 %** from raw Debe/Haber inputs
+- Stores every consolidation in SQL Server with a full **edit history and audit trail**
+- Separates the two consolidation types into dedicated database tables so that hotel clients never share columns with general clients
+- Restricts data access through **JWT-authenticated roles** (`user` and `admin`)
+
+## Key features
+
+<CardGroup cols={3}>
+  <Card
+    title="Two Consolidation Types"
+    icon="table-columns"
+    href="/features/consolidations"
+  >
+    Generales and Hoteles consolidations each have dedicated forms, database tables, and export templates. Hoteles adds the IST 4 % column automatically.
+  </Card>
+  <Card
+    title="Client Management"
+    icon="address-book"
+    href="/features/clients"
+  >
+    Create and manage client profiles with RTN, company name, industry sector, legal representative, contact details, and logo. Supports CSV bulk import (admin only).
+  </Card>
+  <Card
+    title="Automated Tax Formulas"
+    icon="calculator"
+    href="/features/consolidations"
+  >
+    ISV 15 %, ISV 18 %, and IST 4 % are derived from ledger entries automatically — no manual formula entry required.
+  </Card>
+  <Card
+    title="Excel & PDF Export"
+    icon="file-export"
+    href="/features/export"
+  >
+    Generate formatted Excel workbooks and PDF reports for each consolidation period, ready to submit to clients or attach to SAR filings.
+  </Card>
+  <Card
+    title="Audit Logs"
+    icon="scroll"
+    href="/features/audit-logs"
+  >
+    Every login, consolidation creation, edit, and deletion is recorded in `system_logs` with user identity, IP address, and timestamp.
+  </Card>
+  <Card
+    title="Role-Based Access"
+    icon="lock"
+    href="/configuration/security"
+  >
+    JWT middleware enforces `user` and `admin` roles. Only admins can manage users, bulk-import clients, or view system logs.
+  </Card>
+</CardGroup>
+
+## Consolidation types in detail
+
+### Consolidaciones Generales
+
+Used for standard commercial and service businesses. The form presents all 55 accounts with Debe and Haber columns. ISV 15 % and ISV 18 % totals are computed automatically. Completed consolidations are stored in the `consolidaciones_generales` table and can be retrieved, edited (with a mandatory reason field), and exported at any time.
+
+### Consolidaciones Hoteles
+
+Used for hotels, resorts, and other tourism businesses subject to IST. Identical to Generales but includes an additional IST 4 % column. Data is stored in the `consolidaciones_hoteles` table, keeping hotel figures cleanly separated from general business data.
+
+## Tech stack
+
+| Layer | Technologies |
+|---|---|
+| Frontend | React 18, TypeScript, Vite, Axios, TailwindCSS, Lucide Icons |
+| Backend | Node.js, Express.js, express-validator, JWT (`jsonwebtoken`), `bcrypt` |
+| Database | Microsoft SQL Server, `mssql` connection pooling |
+| Desktop | Electron 28, electron-builder (NSIS installer for Windows) |
+
+<Note>
+  **Electron desktop mode** packages the entire application — backend server, frontend assets, and the Electron shell — into a single Windows installer (`.exe`). Once installed, the application runs fully offline without requiring a separate Node.js or SQL Server installation visible to the end user. See the [Electron deployment guide](/deployment/electron) for build and distribution instructions.
+</Note>

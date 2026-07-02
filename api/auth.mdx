@@ -1,0 +1,645 @@
+---
+title: "Authentication API — Login, Register, Token Validation"
+sidebarTitle: "Auth"
+description: "ContabilidadISV uses JWT bearer tokens for authentication. Obtain a token via POST /api/auth/login and include it in the Authorization header on every subsequent request."
+---
+
+ContabilidadISV's authentication system is built on **JSON Web Tokens (JWT)**. The flow is straightforward: the client POSTs credentials to `POST /api/auth/login`, receives a signed JWT in the response, and stores it in `localStorage` (frontend) or in your HTTP client's state. Every subsequent request to a protected endpoint must include the token in the `Authorization` header in the form `Authorization: Bearer <token>`. On the server side, the `authenticateToken` middleware verifies the token signature and confirms that the corresponding user still exists in the database before allowing the request to proceed.
+
+<Note>
+  All endpoints except `POST /api/auth/login` and `POST /api/auth/register` require a valid JWT token passed in the `Authorization: Bearer <token>` header.
+</Note>
+
+---
+
+## Obtaining a Token
+
+### `POST /api/auth/login`
+
+Validates the supplied credentials and returns a signed JWT along with the authenticated user's profile. Failed attempts are recorded in the database and contribute to rate-limiting counters.
+
+#### Request Body
+
+<ParamField body="username" type="string" required>
+  The account username. Must be at least 3 characters long.
+</ParamField>
+
+<ParamField body="password" type="string" required>
+  The account password. Cannot be empty.
+</ParamField>
+
+#### Response
+
+<ResponseField name="message" type="string">
+  Human-readable confirmation, e.g. `"Login exitoso"`.
+</ResponseField>
+
+<ResponseField name="token" type="string">
+  Signed JWT bearer token. Include this value in the `Authorization: Bearer <token>` header on all authenticated requests. Expires according to the `JWT_EXPIRES_IN` environment variable (defaults to `24h`).
+</ResponseField>
+
+<ResponseField name="user" type="object">
+  The authenticated user's profile.
+
+  <Expandable title="user fields">
+    <ResponseField name="user.id" type="number">
+      Unique integer identifier of the user.
+    </ResponseField>
+
+    <ResponseField name="user.username" type="string">
+      The user's login handle.
+    </ResponseField>
+
+    <ResponseField name="user.email" type="string">
+      The user's email address.
+    </ResponseField>
+
+    <ResponseField name="user.role" type="'user' | 'admin'">
+      Role assigned to the user. Controls access to admin-only endpoints.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+#### Error Responses
+
+| Status | Meaning |
+|--------|---------|
+| `400`  | Validation error — `username` or `password` did not pass input validation. The response body contains a `details` array with field-level messages. |
+| `401`  | Invalid credentials — username not found or password mismatch. The response body is `{ "error": "Credenciales inválidas" }`. |
+| `500`  | Internal server error. |
+
+#### Example
+
+<CodeGroup>
+
+```bash curl
+curl -s -X POST https://your-api.example.com/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "jsmith",
+    "password": "s3cur3P@ss"
+  }'
+```
+
+```json Response
+{
+  "message": "Login exitoso",
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "user": {
+    "id": 7,
+    "username": "jsmith",
+    "email": "jsmith@empresa.hn",
+    "role": "user"
+  }
+}
+```
+
+</CodeGroup>
+
+---
+
+## Registering a User
+
+### `POST /api/auth/register`
+
+Creates a new user account and immediately returns a JWT so the client can proceed without a separate login step. In most deployments this endpoint is used for initial setup or by administrators to onboard new users.
+
+#### Request Body
+
+<ParamField body="username" type="string" required>
+  Desired username. Must be between **3 and 30 characters** after trimming whitespace.
+</ParamField>
+
+<ParamField body="email" type="string" required>
+  Valid email address. The value is normalized (lowercased, extraneous dots removed) before storage.
+</ParamField>
+
+<ParamField body="password" type="string" required>
+  Account password. Minimum **6 characters**. Stored as a bcrypt hash (12 salt rounds).
+</ParamField>
+
+<ParamField body="role" type="'user' | 'admin'" default="user">
+  Role to assign. Optional. Must be exactly `"user"` or `"admin"` if provided; defaults to `"user"`.
+</ParamField>
+
+#### Validation Rules (enforced by `express-validator`)
+
+| Field      | Rule |
+|------------|------|
+| `username` | Trimmed; length 3–30 characters |
+| `email`    | Must pass `isEmail()` check; normalized before storage |
+| `password` | Minimum 6 characters |
+| `role`     | Optional; must be `"user"` or `"admin"` if present |
+
+#### Response
+
+Same shape as the login response:
+
+<ResponseField name="message" type="string">
+  `"Usuario registrado exitosamente"`
+</ResponseField>
+
+<ResponseField name="token" type="string">
+  Signed JWT bearer token for the newly created account.
+</ResponseField>
+
+<ResponseField name="user" type="object">
+  <Expandable title="user fields">
+    <ResponseField name="user.id" type="number">Newly assigned user ID.</ResponseField>
+    <ResponseField name="user.username" type="string">Registered username.</ResponseField>
+    <ResponseField name="user.email" type="string">Registered email address.</ResponseField>
+    <ResponseField name="user.role" type="'user' | 'admin'">Assigned role.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+#### Error Responses
+
+| Status | Meaning |
+|--------|---------|
+| `400`  | Validation error or email already registered. |
+| `500`  | Internal server error. |
+
+#### Example
+
+<CodeGroup>
+
+```bash curl
+curl -s -X POST https://your-api.example.com/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "nuevo_contador",
+    "email": "contador@empresa.hn",
+    "password": "M1Cl4ve!",
+    "role": "user"
+  }'
+```
+
+```json Response
+{
+  "message": "Usuario registrado exitosamente",
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "user": {
+    "id": 12,
+    "username": "nuevo_contador",
+    "email": "contador@empresa.hn",
+    "role": "user"
+  }
+}
+```
+
+</CodeGroup>
+
+---
+
+## Token Validation
+
+### `GET /api/auth/validate`
+
+Verifies that the bearer token in the request header is still valid and that the associated user exists in the database. Use this endpoint in client-side route guards or app initialization to quickly check session state.
+
+**Requires:** `Authorization: Bearer <token>`
+
+#### Response
+
+<ResponseField name="valid" type="boolean">
+  Always `true` when the request succeeds (a failed token produces a `401`/`403` error, not `false`).
+</ResponseField>
+
+<ResponseField name="user" type="object">
+  <Expandable title="user fields">
+    <ResponseField name="user.id" type="number">User ID extracted from the token payload.</ResponseField>
+    <ResponseField name="user.username" type="string">Username.</ResponseField>
+    <ResponseField name="user.email" type="string">Email address.</ResponseField>
+    <ResponseField name="user.role" type="'user' | 'admin'">Role.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+#### Error Responses
+
+| Status | Meaning |
+|--------|---------|
+| `401`  | No token provided, or the token's user no longer exists in the database. |
+| `403`  | Token present but signature verification failed (expired or tampered). |
+
+#### Example
+
+<CodeGroup>
+
+```bash curl
+curl -s https://your-api.example.com/api/auth/validate \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+```json Response
+{
+  "valid": true,
+  "user": {
+    "id": 7,
+    "username": "jsmith",
+    "email": "jsmith@empresa.hn",
+    "role": "user"
+  }
+}
+```
+
+</CodeGroup>
+
+---
+
+## Get Profile
+
+### `GET /api/auth/profile`
+
+Returns the full profile record for the currently authenticated user as stored in the database. Unlike the token payload — which is static for the token's lifetime — this endpoint reflects any updates made to the user record after the token was issued.
+
+**Requires:** `Authorization: Bearer <token>`
+
+#### Response
+
+<ResponseField name="user" type="object">
+  <Expandable title="user fields">
+    <ResponseField name="user.id" type="number">User ID.</ResponseField>
+    <ResponseField name="user.username" type="string">Username.</ResponseField>
+    <ResponseField name="user.email" type="string">Email address.</ResponseField>
+    <ResponseField name="user.role" type="'user' | 'admin'">Current role (re-read from DB).</ResponseField>
+    <ResponseField name="user.created_at" type="string">ISO 8601 timestamp of when the account was created.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+#### Error Responses
+
+| Status | Meaning |
+|--------|---------|
+| `401`  | Missing or invalid token. |
+| `404`  | User referenced by the token no longer exists. |
+| `500`  | Internal server error. |
+
+#### Example
+
+<CodeGroup>
+
+```bash curl
+curl -s https://your-api.example.com/api/auth/profile \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+```json Response
+{
+  "user": {
+    "id": 7,
+    "username": "jsmith",
+    "email": "jsmith@empresa.hn",
+    "role": "user",
+    "created_at": "2024-03-15T10:23:00.000Z"
+  }
+}
+```
+
+</CodeGroup>
+
+---
+
+## Logout
+
+### `POST /api/auth/logout`
+
+Records a `USER_LOGOUT` event in the system log (capturing IP address and User-Agent) and confirms the session has been closed. Because ContabilidadISV uses stateless JWTs, the token is **not blocklisted** server-side — the client is responsible for deleting it from `localStorage`.
+
+**Requires:** `Authorization: Bearer <token>`
+
+#### Response
+
+<ResponseField name="message" type="string">
+  `"Logout exitoso"`
+</ResponseField>
+
+#### Error Responses
+
+| Status | Meaning |
+|--------|---------|
+| `401`  | Missing or invalid token. |
+| `500`  | Internal server error (log creation failed). |
+
+#### Example
+
+<CodeGroup>
+
+```bash curl
+curl -s -X POST https://your-api.example.com/api/auth/logout \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+```json Response
+{
+  "message": "Logout exitoso"
+}
+```
+
+</CodeGroup>
+
+---
+
+## Admin Endpoints
+
+The following endpoints require both a valid token **and** the `admin` role. Requests from `user`-role accounts receive a `403 Forbidden` response.
+
+---
+
+### `GET /api/auth/login-history`
+
+Returns a paginated list of login attempts recorded in the database (both successful and failed).
+
+**Requires:** `Authorization: Bearer <token>` · `role: admin`
+
+#### Query Parameters
+
+<ParamField query="username" type="string">
+  Filter attempts by username (partial or exact, depending on DB implementation).
+</ParamField>
+
+<ParamField query="ipAddress" type="string">
+  Filter attempts originating from a specific IP address.
+</ParamField>
+
+<ParamField query="hoursBack" type="number" default="24">
+  How many hours into the past to look. Defaults to `24`.
+</ParamField>
+
+<ParamField query="failedOnly" type="boolean" default="false">
+  When `"true"`, return only failed attempts.
+</ParamField>
+
+#### Response
+
+<ResponseField name="success" type="boolean">
+  `true` on success.
+</ResponseField>
+
+<ResponseField name="count" type="number">
+  Total number of records returned.
+</ResponseField>
+
+<ResponseField name="attempts" type="array">
+  Array of login-attempt objects.
+
+  <Expandable title="attempt fields">
+    <ResponseField name="id" type="number">Record ID.</ResponseField>
+    <ResponseField name="username" type="string">Attempted username.</ResponseField>
+    <ResponseField name="ipAddress" type="string">Source IP address.</ResponseField>
+    <ResponseField name="userAgent" type="string">HTTP User-Agent string.</ResponseField>
+    <ResponseField name="attemptTime" type="string">ISO 8601 timestamp of the attempt.</ResponseField>
+    <ResponseField name="success" type="boolean">Whether the attempt succeeded.</ResponseField>
+    <ResponseField name="failureReason" type="string">Reason for failure, if applicable.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+#### Example
+
+<CodeGroup>
+
+```bash curl
+curl -s "https://your-api.example.com/api/auth/login-history?hoursBack=48&failedOnly=true" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+```json Response
+{
+  "success": true,
+  "count": 3,
+  "attempts": [
+    {
+      "id": 101,
+      "username": "unknown_user",
+      "ipAddress": "192.168.1.55",
+      "userAgent": "curl/8.4.0",
+      "attemptTime": "2024-06-01T14:22:10.000Z",
+      "success": false,
+      "failureReason": "Contraseña incorrecta"
+    }
+  ]
+}
+```
+
+</CodeGroup>
+
+---
+
+### `GET /api/auth/failed-login-stats`
+
+Aggregates failed login attempts by IP address over a configurable time window. Use this to identify brute-force patterns.
+
+**Requires:** `Authorization: Bearer <token>` · `role: admin`
+
+#### Query Parameters
+
+<ParamField query="ipAddress" type="string">
+  Narrow results to a specific IP address.
+</ParamField>
+
+<ParamField query="minutesBack" type="number" default="30">
+  Time window in minutes. Defaults to `30`.
+</ParamField>
+
+#### Response
+
+<ResponseField name="success" type="boolean">
+  `true` on success.
+</ResponseField>
+
+<ResponseField name="count" type="number">
+  Number of distinct IP entries returned.
+</ResponseField>
+
+<ResponseField name="stats" type="array">
+  <Expandable title="stat fields">
+    <ResponseField name="ipAddress" type="string">The source IP address.</ResponseField>
+    <ResponseField name="failedAttempts" type="number">Total failed attempts from this IP in the window.</ResponseField>
+    <ResponseField name="lastAttempt" type="string">ISO 8601 timestamp of the most recent failed attempt.</ResponseField>
+    <ResponseField name="attemptedUsernames" type="string">Comma-separated list of usernames tried from this IP.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+#### Example
+
+<CodeGroup>
+
+```bash curl
+curl -s "https://your-api.example.com/api/auth/failed-login-stats?minutesBack=60" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+```json Response
+{
+  "success": true,
+  "count": 1,
+  "stats": [
+    {
+      "ipAddress": "203.0.113.42",
+      "failedAttempts": 12,
+      "lastAttempt": "2024-06-01T15:10:44.000Z",
+      "attemptedUsernames": "admin,root,administrator"
+    }
+  ]
+}
+```
+
+</CodeGroup>
+
+---
+
+### `POST /api/auth/clean-login-attempts`
+
+Purges login attempt records older than the specified number of days. Run periodically to keep the `login_attempts` table lean.
+
+**Requires:** `Authorization: Bearer <token>` · `role: admin`
+
+#### Request Body
+
+<ParamField body="daysToKeep" type="number" default="30">
+  Records older than this many days will be deleted. Defaults to `30`.
+</ParamField>
+
+#### Example
+
+<CodeGroup>
+
+```bash curl
+curl -s -X POST https://your-api.example.com/api/auth/clean-login-attempts \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." \
+  -H "Content-Type: application/json" \
+  -d '{ "daysToKeep": 14 }'
+```
+
+```json Response
+{
+  "success": true,
+  "message": "Registros más antiguos de 14 días eliminados",
+  "deleted": 47
+}
+```
+
+</CodeGroup>
+
+---
+
+## Using the Token
+
+### Frontend — Axios interceptor (from `api.ts`)
+
+The React frontend configures an Axios instance that automatically attaches the stored token to every outgoing request and handles `401` responses by clearing state and redirecting to the login page:
+
+```typescript axios-interceptor.ts
+import axios from 'axios';
+
+const api = axios.create({
+  baseURL: '/api',
+  timeout: 30000,
+});
+
+// Attach token from localStorage to every request
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
+// On 401, clear auth state and redirect to login
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      window.location.href = '/login';
+    }
+    return Promise.reject(error);
+  }
+);
+```
+
+After a successful login the token and user data are persisted to `localStorage`:
+
+```typescript store-token.ts
+// After POST /api/auth/login
+const { token, user } = response.data;
+localStorage.setItem('token', token);
+localStorage.setItem('user', JSON.stringify(user));
+```
+
+### Any HTTP client
+
+You can replicate the same pattern in any language or tool — the only requirement is the `Authorization` header:
+
+<CodeGroup>
+
+```bash curl – Login then authenticated request
+# 1. Login and extract token
+TOKEN=$(curl -s -X POST https://your-api.example.com/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"jsmith","password":"s3cur3P@ss"}' \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
+
+# 2. Use the token on a protected endpoint
+curl -s https://your-api.example.com/api/auth/profile \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+```python Python (requests)
+import requests
+
+# Login
+resp = requests.post(
+    "https://your-api.example.com/api/auth/login",
+    json={"username": "jsmith", "password": "s3cur3P@ss"},
+)
+token = resp.json()["token"]
+
+# Authenticated request
+headers = {"Authorization": f"Bearer {token}"}
+profile = requests.get(
+    "https://your-api.example.com/api/auth/profile",
+    headers=headers,
+)
+print(profile.json())
+```
+
+```javascript Node.js (fetch)
+// Login
+const loginRes = await fetch('https://your-api.example.com/api/auth/login', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ username: 'jsmith', password: 's3cur3P@ss' }),
+});
+const { token } = await loginRes.json();
+
+// Authenticated request
+const profileRes = await fetch('https://your-api.example.com/api/auth/profile', {
+  headers: { Authorization: `Bearer ${token}` },
+});
+const profile = await profileRes.json();
+console.log(profile);
+```
+
+</CodeGroup>
+
+---
+
+<Warning>
+  **localStorage and XSS risk.** The ContabilidadISV frontend stores the JWT in `localStorage`, which is accessible to any JavaScript running on the page. In production environments with strict security requirements — especially where XSS is a concern — consider migrating token storage to **HttpOnly cookies** managed by the server. HttpOnly cookies are invisible to JavaScript and provide a stronger security boundary. See [Security Configuration](/configuration/security) for related hardening options.
+</Warning>
+
+---
+
+## Related Pages
+
+- [Quickstart](/quickstart) — end-to-end setup and first login
+- [Environment Configuration](/configuration/environment) — `JWT_SECRET`, `JWT_EXPIRES_IN`, and other auth-related variables
+- [Security Configuration](/configuration/security) — rate limiting, CORS, and brute-force protection details
+- [Audit Logs](/features/audit-logs) — how `USER_LOGIN`, `USER_LOGOUT`, and `USER_REGISTER` events are recorded
+- [Users API](/api/users) — managing user accounts after authentication
+- [Admin API](/api/admin) — other admin-only operations

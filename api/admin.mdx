@@ -1,0 +1,268 @@
+---
+title: "Admin API — System Management and Security Endpoints"
+sidebarTitle: "Admin"
+description: "Admin-only endpoints for system password validation, security statistics monitoring, database table backups, and data deletion operations."
+---
+
+All `/api/admin` endpoints require a valid JWT token **and** `role='admin'`.
+The `authenticateToken` middleware validates the JWT first; the `requireRole(['admin'])` middleware then enforces the role restriction on every route in this group. These endpoints expose system-level operations — security monitoring and direct database management — that must not be accessible to standard users.
+
+<Warning>
+  The **backup** and **delete** endpoints are destructive database operations.
+  Always set `backupBefore: true` when calling `POST /api/admin/delete` to
+  ensure a recoverable snapshot exists before records are permanently removed.
+</Warning>
+
+---
+
+## POST /api/admin/validate-system-password
+
+Validates the system configuration password defined in the `ADMIN_SYSTEM_CONFIG_PASSWORD` environment variable. This password gates access to sensitive configuration screens in the frontend without requiring a separate credential store. Both successful and failed attempts are recorded in the audit log.
+
+**Request body**
+
+<ParamField body="password" type="string" required>
+  The system configuration password to validate. Compared directly against
+  the `ADMIN_SYSTEM_CONFIG_PASSWORD` environment variable (plain-text
+  comparison — ensure this variable is kept secret and not checked into
+  source control).
+</ParamField>
+
+**Response** — `200 OK` on match, `401 Unauthorized` on mismatch.
+
+<ResponseField name="success" type="boolean">
+  `true` when the password matches.
+</ResponseField>
+
+<ResponseField name="valid" type="boolean">
+  `true` when the password matches; `false` when it does not. The HTTP status
+  code mirrors this: `200` for `true`, `401` for `false`.
+</ResponseField>
+
+```bash
+curl -X POST https://your-host/api/admin/validate-system-password \
+  -H "Authorization: Bearer <admin-token>" \
+  -H "Content-Type: application/json" \
+  -d '{ "password": "mi_clave_sistema" }'
+```
+
+```json
+{ "success": true, "valid": true }
+```
+
+**Error codes**
+
+| Status | Reason |
+|--------|--------|
+| `400` | `password` field missing from request body |
+| `401` | Password does not match `ADMIN_SYSTEM_CONFIG_PASSWORD` |
+| `500` | `ADMIN_SYSTEM_CONFIG_PASSWORD` not set in server environment |
+
+---
+
+## GET /api/admin/security-stats
+
+Returns real-time security statistics collected by the in-memory security
+middleware. Stats include tracked IP addresses, currently blocked IPs,
+per-IP suspicion scores, and failed login attempt counts.
+
+<Note>
+  Security stats are held **in process memory** and are **reset when the
+  backend process restarts** (e.g. after a deployment or server reboot). They
+  are not persisted to the database.
+</Note>
+
+**Response**
+
+<ResponseField name="success" type="boolean">
+  Always `true` on a successful response.
+</ResponseField>
+
+<ResponseField name="stats" type="object">
+  Current security state captured by the middleware. Fields vary by
+  middleware implementation but typically include:
+
+  <Expandable title="stats fields">
+    <ResponseField name="trackedIPs" type="number">
+      Count of unique IP addresses the middleware has observed since the last
+      process start.
+    </ResponseField>
+    <ResponseField name="blockedIPs" type="number">
+      Count of IP addresses currently blocked due to suspicious activity.
+    </ResponseField>
+    <ResponseField name="suspicionScores" type="object">
+      Map of `IP address → numeric suspicion score`. Higher scores indicate
+      more suspicious behaviour.
+    </ResponseField>
+    <ResponseField name="failedLogins" type="object">
+      Map of `IP address → failed login count` since the last process start.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="timestamp" type="string">
+  ISO 8601 timestamp of when the stats snapshot was taken (`new Date().toISOString()`).
+</ResponseField>
+
+```bash
+curl -X GET https://your-host/api/admin/security-stats \
+  -H "Authorization: Bearer <admin-token>"
+```
+
+```json
+{
+  "success": true,
+  "stats": {
+    "trackedIPs": 12,
+    "blockedIPs": 1,
+    "suspicionScores": {
+      "203.0.113.45": 85,
+      "192.168.1.10": 0
+    },
+    "failedLogins": {
+      "203.0.113.45": 7
+    }
+  },
+  "timestamp": "2024-07-10T18:30:00.000Z"
+}
+```
+
+---
+
+## POST /api/admin/backup
+
+Creates a full snapshot of a database table by running
+`SELECT * INTO dbo.<table>_backup_YYYYMMDD FROM dbo.<table>`. The backup
+table name includes today's date so multiple backups on different days do not
+conflict. The row count of the new backup table is returned in the response
+and the operation is recorded in the audit log.
+
+**Allowed tables:** `consolidaciones_generales`, `consolidaciones_hoteles`,
+`clientes`, `users`, `system_logs`, `uploaded_files`.
+
+**Request body**
+
+<ParamField body="table" type="string" required>
+  Name of the source table to back up. Must be one of the allowed tables
+  listed above. Any other value returns `400 Bad Request`.
+</ParamField>
+
+**Response**
+
+<ResponseField name="success" type="boolean">
+  `true` on successful backup creation.
+</ResponseField>
+
+<ResponseField name="backup" type="string">
+  Name of the newly created backup table (e.g.
+  `"consolidaciones_generales_backup_20240710"`).
+</ResponseField>
+
+<ResponseField name="rows" type="number">
+  Number of rows copied into the backup table.
+</ResponseField>
+
+```bash
+curl -X POST https://your-host/api/admin/backup \
+  -H "Authorization: Bearer <admin-token>" \
+  -H "Content-Type: application/json" \
+  -d '{ "table": "consolidaciones_generales" }'
+```
+
+```json
+{
+  "success": true,
+  "backup": "consolidaciones_generales_backup_20240710",
+  "rows": 148
+}
+```
+
+**Error codes**
+
+| Status | Reason |
+|--------|--------|
+| `400` | `table` field missing or not in the allowed list |
+| `403` | Caller does not have `admin` role |
+| `500` | Database error during the `SELECT INTO` operation |
+
+---
+
+## POST /api/admin/delete
+
+Deletes **all records** from a database table using `DELETE FROM dbo.<table>`,
+executed inside a transaction that is automatically rolled back if an error
+occurs. Optionally creates a backup first. Both the backup step and the
+deletion are recorded in the audit log.
+
+<Warning>
+  This operation is **irreversible** once committed. Always pass
+  `"backupBefore": true` unless you are certain the data is no longer needed
+  and a manual backup has already been taken.
+</Warning>
+
+**Allowed tables:** `consolidaciones_generales`, `consolidaciones_hoteles`,
+`clientes`, `users`, `system_logs`, `uploaded_files`.
+
+**Request body**
+
+<ParamField body="table" type="string" required>
+  Name of the table to clear. Must be one of the allowed tables listed above.
+</ParamField>
+
+<ParamField body="backupBefore" type="boolean">
+  When `true`, a dated backup table is created (identical to calling
+  `POST /api/admin/backup`) before the delete runs. Strongly recommended.
+  Defaults to `false` when omitted.
+</ParamField>
+
+**Response**
+
+<ResponseField name="success" type="boolean">
+  `true` on successful deletion.
+</ResponseField>
+
+<ResponseField name="deleted" type="boolean">
+  Always `true` when the operation completes without error.
+</ResponseField>
+
+<ResponseField name="backup" type="string | null">
+  Name of the backup table created before deletion (e.g.
+  `"clientes_backup_20240710"`), or `null` if `backupBefore` was `false`.
+</ResponseField>
+
+```bash
+# Safe delete with automatic backup
+curl -X POST https://your-host/api/admin/delete \
+  -H "Authorization: Bearer <admin-token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "table": "consolidaciones_hoteles",
+    "backupBefore": true
+  }'
+```
+
+```json
+{
+  "success": true,
+  "deleted": true,
+  "backup": "consolidaciones_hoteles_backup_20240710"
+}
+```
+
+**Error codes**
+
+| Status | Reason |
+|--------|--------|
+| `400` | `table` field missing or not in the allowed list |
+| `403` | Caller does not have `admin` role |
+| `500` | Database error; transaction is rolled back automatically |
+
+---
+
+## Related pages
+
+- [Configuration → Security](/configuration/security) — `ADMIN_SYSTEM_CONFIG_PASSWORD` and security middleware settings
+- [Configuration → Environment](/configuration/environment) — full environment variable reference
+- [System Logs API](/api/logs) — audit trail entries created by backup and delete operations
+- [Configuration → Database](/configuration/database) — database connection and table structure
+- [Deployment → Web](/deployment/web) — notes on process restarts and in-memory state

@@ -1,0 +1,169 @@
+---
+title: "Security Configuration and Multi-Layer Protection"
+sidebarTitle: "Security"
+description: "ContabilidadISV includes rate limiting, IP behavior analysis, suspicious activity detection, and automatic temporary IP blocking to protect the accounting system."
+---
+
+ContabilidadISV uses a **multi-layer security model** that combines JWT-based authentication, HTTP header validation, IP behavior analysis, and automatic temporary blocking to protect the accounting data from unauthorized access and automated attacks — without requiring a fixed IP or dedicated hardware firewall. The full architecture is described in `INICIO_RAPIDO_SEGURIDAD.md` at the project root.
+
+## JWT Authentication
+
+Every protected API route requires a valid JSON Web Token signed with `JWT_SECRET`.
+
+- Tokens are **issued on login** by `POST /api/auth/login` and returned in the response body.
+- The frontend stores the token in **`localStorage`** under the key `token` (managed by `tokenUtils` in `frontend/src/services/api.ts`).
+- All subsequent API calls attach the token via the **`Authorization: Bearer <token>`** header, added automatically by an Axios request interceptor.
+- The `authenticateToken` middleware in `backend/src/middleware/auth.js` verifies the token signature, decodes the payload, and confirms the user still exists in the database before attaching `req.user` for downstream handlers.
+- If the token is expired or invalid the API responds with **HTTP 403**. If it is missing entirely the API responds with **HTTP 401**.
+- When the frontend receives a 401 response the Axios response interceptor clears `localStorage` and redirects to `/login` automatically.
+
+```javascript
+// Excerpt from backend/src/middleware/auth.js
+const authenticateToken = async (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+
+  if (!token) {
+    return res.status(401).json({ error: 'Token de acceso requerido' });
+  }
+
+  const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+  // Confirm the user account still exists
+  const user = await db.findUserById(decoded.userId);
+  if (!user) {
+    return res.status(401).json({ error: 'Usuario no válido' });
+  }
+
+  req.user = { id: user.id, username: user.username,
+               email: user.email,  role: user.role };
+  next();
+};
+```
+
+<Note>
+The `JWT_SECRET` environment variable must be set before starting the backend. Use a cryptographically random string of at least 64 characters. See [Environment Variables](/configuration/environment) for generation instructions.
+</Note>
+
+## Rate Limiting
+
+The `behaviorAnalysis` middleware in `backend/src/middleware/security.js` tracks the request rate for every source IP. When a single IP exceeds **10 requests per second** the middleware increments that IP's suspicion score by **3 points**:
+
+```javascript
+// Excerpt from backend/src/middleware/security.js
+const timeDiff = now - ipData.firstSeen;
+const requestRate = ipData.requests / (timeDiff / 1000); // requests per second
+if (requestRate > 10) {
+  console.warn(` SOSPECHOSO: IP ${ip} con ${requestRate.toFixed(2)} req/seg`);
+  ipData.suspicionScore = (ipData.suspicionScore || 0) + 3;
+}
+```
+
+Rate data is stored **in memory** per IP. The cache is automatically pruned every hour — any IP that has not been seen for 60 minutes is removed from the tracking map.
+
+## IP Behavior Analysis
+
+The security middleware builds a behavioral profile for each source IP and accumulates a **suspicion score** from several independent signals:
+
+| Signal | Threshold | Score Added |
+|---|---|---|
+| Multiple User-Agents from the same IP (bots / malware) | `> 5` distinct User-Agents | +2 per check |
+| High request rate | `> 10 req/s` | +3 per check |
+| Failed login attempts | `≥ 5` failures | +5 per check |
+
+When an IP's cumulative suspicion score reaches **10 or above** it is added to the `blockedIPs` set and receives a **HTTP 403** response on every subsequent request:
+
+```javascript
+// Excerpt from backend/src/middleware/security.js
+if (ipData.suspicionScore >= 10) {
+  blockedIPs.add(ip);
+  console.error(` IP BLOQUEADA: ${ip} - Score: ${ipData.suspicionScore}`);
+
+  // Automatically unblock after 30 minutes
+  setTimeout(() => {
+    blockedIPs.delete(ip);
+    suspiciousIPs.delete(ip);
+    console.log(` IP DESBLOQUEADA: ${ip}`);
+  }, 30 * 60 * 1000);
+
+  return res.status(403).json({
+    error: 'Acceso bloqueado temporalmente por comportamiento sospechoso',
+    reason: 'Tu IP ha sido identificada con actividad inusual',
+    contact: 'Contacta al administrador si esto es un error'
+  });
+}
+```
+
+Blocked IPs are **automatically released after 30 minutes**. The block list is held in memory, so restarting the backend server also clears all active blocks.
+
+Additionally, the `validateSecurityHeaders` middleware rejects any request that arrives without a `User-Agent` header, and blocks a hardcoded list of scanner signatures including `masscan`, `nmap`, `sqlmap`, `nikto`, `dirbuster`, `metasploit`, `curl`, `wget`, and `python-requests`.
+
+## Tuning Sensitivity
+
+If the defaults are too aggressive (blocking legitimate users) or too permissive (not catching real attackers), adjust the four thresholds in `backend/src/middleware/security.js`:
+
+```javascript
+// Line ~45 — Multiple User-Agents (increase to 10 if too strict)
+if (ipData.differentUserAgents.size > 5) {
+
+// Line ~55 — Request rate in req/s (increase to 20 if too strict)
+if (requestRate > 10) {
+
+// Line ~63 — Suspicion score threshold to trigger block (increase to 15 if too strict)
+if (ipData.suspicionScore >= 10) {
+
+// Line ~72 — Block duration in milliseconds (change 30 to 60 for a 1-hour block)
+}, 30 * 60 * 1000);
+```
+
+After editing, restart the backend for changes to take effect.
+
+## Security Stats Endpoint
+
+Administrators can query the real-time security state via the admin API:
+
+```bash
+GET /api/admin/security-stats
+Authorization: Bearer <admin_token>
+```
+
+The response contains:
+- `totalTrackedIPs` — number of IPs currently being monitored
+- `blockedIPs` — array of currently blocked IP addresses
+- `suspiciousActivity` — array of IPs with a suspicion score above zero, sorted by score descending, each entry including `ip`, `score`, `requests`, `failedLogins`, and `userAgents`
+
+For continuous monitoring, run the included script from the `backend` directory:
+
+```powershell
+$env:ADMIN_TOKEN="your_admin_jwt_token_here"
+node monitor-security.js
+```
+
+<Tip>
+To obtain an admin token, log in to the application with an `admin` account. The token is stored in `localStorage` under the key `token` and is also visible in the browser developer console output at startup (`API_BASE_URL` and `isElectron` are logged there). Pass that value as `ADMIN_TOKEN` when running the monitor script.
+</Tip>
+
+## Roles and Permissions
+
+ContabilidadISV has two built-in roles enforced by the `requireRole` middleware (`backend/src/middleware/auth.js`):
+
+| Role | Allowed Operations |
+|---|---|
+| `admin` | All `user` permissions, plus: manage users (`/api/users`), view audit logs (`/api/logs`), access admin stats (`/api/admin`), delete consolidations, permanently delete clients |
+| `user` | Create and view consolidations (`/api/consolidaciones`), manage clients (`/api/clientes`), upload files (`/api/files`), view reports (`/api/reports`), view own profile (`/api/auth/profile`) |
+
+Routes are protected by chaining `authenticateToken` followed by `requireRole`:
+
+```javascript
+// Example: admin-only route
+router.get('/users', authenticateToken, requireRole(['admin']), getAllUsers);
+
+// Example: both roles allowed
+router.get('/consolidaciones', authenticateToken, requireRole(['admin', 'user']), getConsolidaciones);
+```
+
+Attempting to access a route without the required role returns **HTTP 403** (`Permisos insuficientes`). Attempting to access any protected route without a valid token returns **HTTP 401** (`Token de acceso requerido`).
+
+<Note>
+The initial admin account is created by the database initialization script (`npm run init-db`). Refer to [Audit Logs](/features/audit-logs) to see how every role-based action is automatically recorded in the `system_logs` table.
+</Note>

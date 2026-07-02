@@ -1,0 +1,479 @@
+---
+title: "Clientes API — Company Client Management Endpoints"
+sidebarTitle: "Clientes"
+description: "REST endpoints for creating, listing, updating, and deactivating client company records. Each client has an RTN (Honduran tax ID), sector, representative, and contact details."
+---
+
+All clientes endpoints require a valid JWT token in the `Authorization` header (`Bearer <token>`). Clients (*empresas*) are the legal entities on behalf of which tax consolidations are created. The **RTN** (Registro Tributario Nacional) is Honduras's tax registration number and must contain only digits and hyphens — it uniquely identifies a company in the SAR (Servicio de Administración de Rentas) system. Every write operation is automatically logged to the system audit trail.
+
+---
+
+## GET /api/clientes
+
+List all client records. By default returns only active clients (`activo = 1`). Supports optional filtering by status and a full-text search across company name, RTN, representative, and sector.
+
+**Auth:** Bearer token required.
+
+### Query Parameters
+
+<ParamField query="activo" type="boolean">
+  Filter by active status. Pass `true` (default) for active clients only, `false` to retrieve deactivated clients. Omit to receive all clients regardless of status.
+</ParamField>
+
+<ParamField query="search" type="string">
+  Free-text search term. Matched against `nombre_empresa`, `rtn`, `representante`, and `rubro` fields.
+</ParamField>
+
+### Response
+
+<ResponseField name="success" type="boolean">
+  `true` on a successful query.
+</ResponseField>
+
+<ResponseField name="clientes" type="array">
+  Array of client objects matching the filter criteria.
+
+  <Expandable title="client object fields">
+    <ResponseField name="id" type="integer">
+      Auto-generated primary key.
+    </ResponseField>
+    <ResponseField name="nombre_empresa" type="string">
+      Legal name of the company.
+    </ResponseField>
+    <ResponseField name="rtn" type="string">
+      Registro Tributario Nacional — stored in uppercase. Contains only digits and hyphens.
+    </ResponseField>
+    <ResponseField name="rubro" type="string">
+      Business sector / industry (e.g. `"Farmacia"`, `"Hotelería"`, `"Comercio General"`).
+    </ResponseField>
+    <ResponseField name="representante" type="string">
+      Full name of the legal representative.
+    </ResponseField>
+    <ResponseField name="telefono" type="string">
+      Contact phone number.
+    </ResponseField>
+    <ResponseField name="email" type="string">
+      Contact email address (stored lowercase).
+    </ResponseField>
+    <ResponseField name="direccion" type="string">
+      Physical address.
+    </ResponseField>
+    <ResponseField name="logo_url" type="string">
+      Relative URL to the uploaded company logo, e.g. `/uploads/logos/logo_1714000000000_abc123.png`. `null` if no logo has been uploaded.
+    </ResponseField>
+    <ResponseField name="activo" type="boolean">
+      `true` if the client is active; `false` if deactivated.
+    </ResponseField>
+    <ResponseField name="fecha_registro" type="string">
+      ISO-8601 timestamp of when the client was created.
+    </ResponseField>
+    <ResponseField name="fecha_actualizacion" type="string">
+      ISO-8601 timestamp of the last update.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="total" type="integer">
+  Count of client records returned.
+</ResponseField>
+
+### Example
+
+```bash
+curl -X GET "https://api.example.com/api/clientes?activo=true&search=farmacia" \
+  -H "Authorization: Bearer <token>"
+```
+
+```json
+{
+  "success": true,
+  "clientes": [
+    {
+      "id": 7,
+      "nombre_empresa": "Farmacia Honduras S.A.",
+      "rtn": "08019999123456",
+      "rubro": "Farmacia",
+      "representante": "Carlos Mejía López",
+      "telefono": "2239-4455",
+      "email": "contacto@farmaciahn.com",
+      "direccion": "Col. Palmira, Tegucigalpa, Honduras",
+      "logo_url": null,
+      "activo": true,
+      "fecha_registro": "2024-01-10T09:00:00.000Z",
+      "fecha_actualizacion": "2024-01-10T09:00:00.000Z"
+    }
+  ],
+  "total": 1
+}
+```
+
+---
+
+## POST /api/clientes
+
+Create a new client company record. All seven core fields are required. Optionally accepts a logo image file via `multipart/form-data` (max 5 MB; image formats only).
+
+**Auth:** Bearer token required.
+
+<Info>
+  This endpoint uses `multipart/form-data` when uploading a logo. Send text fields alongside the `logo` file part. If you are not uploading a logo, you may use `application/json` instead — the `uploadLogo` middleware will simply find no file.
+</Info>
+
+### Request Body
+
+<ParamField body="nombre_empresa" type="string" required>
+  Legal name of the company. Length: 2–255 characters.
+</ParamField>
+
+<ParamField body="rtn" type="string" required>
+  Registro Tributario Nacional. Length: 3–50 characters. Must match `/^[0-9\-]+$/` — only digits and hyphens are accepted. The value is stored in uppercase. Duplicate RTNs are rejected with HTTP `409`.
+</ParamField>
+
+<ParamField body="rubro" type="string" required>
+  Business sector (e.g. `"Hotelería"`, `"Comercio"`, `"Servicios"`). Length: 2–100 characters.
+</ParamField>
+
+<ParamField body="representante" type="string" required>
+  Full legal name of the company representative. Length: 2–255 characters.
+</ParamField>
+
+<ParamField body="telefono" type="string" required>
+  Contact phone number. Length: 8–20 characters. Must match `/^[\d\-\+\(\)\s]+$/` — digits, spaces, hyphens, parentheses, and `+` are allowed (e.g. `"2239-4455"` or `"+504 9988-7766"`).
+</ParamField>
+
+<ParamField body="email" type="string" required>
+  Contact email address. Must be a valid email format. Max 255 characters. Stored lowercase.
+</ParamField>
+
+<ParamField body="direccion" type="string" required>
+  Physical address. Length: 5–500 characters.
+</ParamField>
+
+<ParamField body="logo" type="file">
+  Company logo image. Sent as the `logo` field in a `multipart/form-data` request. Max 5 MB. Only image MIME types (`image/*`) are accepted. The server stores the file at `uploads/logos/` and sets `logo_url` automatically.
+</ParamField>
+
+<ParamField body="force" type="boolean">
+  Set to `true` to bypass the duplicate-RTN check and force-create the record. Use with caution.
+</ParamField>
+
+### Response
+
+<ResponseField name="success" type="boolean">
+  `true` on successful creation.
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  `"Cliente creado exitosamente"`
+</ResponseField>
+
+<ResponseField name="cliente" type="object">
+  Full client record as persisted, including the server-assigned `id`, `logo_url`, `activo`, `fecha_registro`, and `fecha_actualizacion`.
+</ResponseField>
+
+### Error Responses
+
+| HTTP Status | Scenario |
+|---|---|
+| `400` | Validation failure — `details` array lists each failing field and its message |
+| `409` | A client with the same RTN already exists in the database |
+| `500` | Unhandled server error |
+
+```json
+{
+  "error": "Datos inválidos",
+  "details": [
+    {
+      "type": "field",
+      "msg": "El RTN debe contener solo números y guiones",
+      "path": "rtn",
+      "location": "body"
+    }
+  ]
+}
+```
+
+### Example
+
+```bash
+curl -X POST https://api.example.com/api/clientes \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "nombre_empresa": "Hotel Vista Honduras S.A.",
+    "rtn": "08011234567890",
+    "rubro": "Hotelería",
+    "representante": "María Fernanda Reyes",
+    "telefono": "2235-6677",
+    "email": "info@vistahotel.hn",
+    "direccion": "Blvd. Juan Pablo II, San Pedro Sula, Honduras"
+  }'
+```
+
+```json
+{
+  "success": true,
+  "message": "Cliente creado exitosamente",
+  "cliente": {
+    "id": 15,
+    "nombre_empresa": "Hotel Vista Honduras S.A.",
+    "rtn": "08011234567890",
+    "rubro": "Hotelería",
+    "representante": "María Fernanda Reyes",
+    "telefono": "2235-6677",
+    "email": "info@vistahotel.hn",
+    "direccion": "Blvd. Juan Pablo II, San Pedro Sula, Honduras",
+    "logo_url": null,
+    "activo": true,
+    "fecha_registro": "2024-03-01T15:30:00.000Z",
+    "fecha_actualizacion": "2024-03-01T15:30:00.000Z"
+  }
+}
+```
+
+---
+
+## GET /api/clientes/:id
+
+Fetch a single client by its numeric ID. Returns `404` if the client does not exist; returns `400` if the `id` path segment is not a valid integer.
+
+**Auth:** Bearer token required.
+
+### Path Parameters
+
+<ParamField path="id" type="integer" required>
+  Numeric primary key of the client.
+</ParamField>
+
+### Response
+
+<ResponseField name="success" type="boolean">
+  `true` on success.
+</ResponseField>
+
+<ResponseField name="cliente" type="object">
+  Full client record. See the fields listed in [GET /api/clientes](#get-apiclientes).
+</ResponseField>
+
+---
+
+## PUT /api/clientes/:id
+
+Update one or more fields on an existing client record. All fields are optional — only the fields included in the request body will be updated. Validation rules are identical to `POST` but no field is required. A logo file can be updated by sending a new `multipart/form-data` request with a `logo` field; the previous logo file will be deleted from disk automatically.
+
+**Auth:** Bearer token required.
+
+### Path Parameters
+
+<ParamField path="id" type="integer" required>
+  Numeric ID of the client to update.
+</ParamField>
+
+### Request Body
+
+<ParamField body="nombre_empresa" type="string">
+  Updated company name. Length: 2–255 characters.
+</ParamField>
+
+<ParamField body="rtn" type="string">
+  Updated RTN. Length: 3–50 characters. Must match `/^[0-9\-]+$/`. Stored uppercase.
+</ParamField>
+
+<ParamField body="rubro" type="string">
+  Updated business sector. Length: 2–100 characters.
+</ParamField>
+
+<ParamField body="representante" type="string">
+  Updated representative name. Length: 2–255 characters.
+</ParamField>
+
+<ParamField body="telefono" type="string">
+  Updated phone number. Length: 8–20 characters. Must match `/^[\d\-\+\(\)\s]+$/`.
+</ParamField>
+
+<ParamField body="email" type="string">
+  Updated email address. Must be valid format. Max 255 characters.
+</ParamField>
+
+<ParamField body="direccion" type="string">
+  Updated address. Length: 5–500 characters.
+</ParamField>
+
+<ParamField body="activo" type="boolean">
+  Set to `false` to deactivate the client, `true` to reactivate. This field is available on `PUT` but not on `POST` (new clients are always active).
+</ParamField>
+
+<ParamField body="logo" type="file">
+  New logo image (`multipart/form-data`). Replaces the existing logo. Max 5 MB, image formats only.
+</ParamField>
+
+### Response
+
+<ResponseField name="success" type="boolean">
+  `true` on successful update.
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  `"Cliente actualizado exitosamente"`
+</ResponseField>
+
+<ResponseField name="cliente" type="object">
+  The updated client record as re-fetched from the database after the change.
+</ResponseField>
+
+---
+
+## DELETE /api/clientes/:id
+
+Soft-delete (deactivate) a client. Sets `activo = false` in the database. The client record is preserved and can be reactivated via [PUT /api/clientes/:id](#put-apiclientesid) with `"activo": true`. Deactivated clients do not appear in the default `GET /api/clientes` response unless `activo=false` is passed.
+
+**Auth:** Bearer token required.
+
+<Note>
+  This is a **soft delete** — the client row is not removed from the database. All associated consolidation records remain intact. To permanently delete a client (admin only), use `DELETE /api/clientes/:id/hard`.
+</Note>
+
+### Path Parameters
+
+<ParamField path="id" type="integer" required>
+  Numeric ID of the client to deactivate.
+</ParamField>
+
+### Response
+
+<ResponseField name="success" type="boolean">
+  `true` on successful deactivation.
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Human-readable confirmation returned by the model, e.g. `"Cliente desactivado exitosamente"`.
+</ResponseField>
+
+---
+
+## Additional Endpoints
+
+The following endpoints are also available on the `/api/clientes` router but are supplementary to the core CRUD operations above.
+
+### GET /api/clientes/stats
+
+Returns aggregate statistics for the client list.
+
+**Auth:** Bearer token required.
+
+<ResponseField name="success" type="boolean">
+  `true` on success.
+</ResponseField>
+
+<ResponseField name="estadisticas" type="object">
+  Statistics object returned by `Cliente.getStats()`. Typically includes counts of active/inactive clients and breakdowns by `rubro`.
+</ResponseField>
+
+---
+
+### PATCH /api/clientes/:id/toggle-status
+
+Toggle the `activo` flag of a client without specifying the new value — the server flips the current state. Useful for quick activate/deactivate actions in list views.
+
+**Auth:** Bearer token required.
+
+<ParamField path="id" type="integer" required>
+  ID of the client whose status should be toggled.
+</ParamField>
+
+<ResponseField name="success" type="boolean">
+  `true` on success.
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  `"Cliente activado exitosamente"` or `"Cliente desactivado exitosamente"`.
+</ResponseField>
+
+<ResponseField name="cliente" type="object">
+  Updated client record reflecting the new `activo` state.
+</ResponseField>
+
+---
+
+### DELETE /api/clientes/:id/hard
+
+Permanently delete a client and remove its logo from disk. **Admin role required.** Returns `403 Forbidden` for non-admin users. This operation is irreversible.
+
+**Auth:** Bearer token required + `role = "admin"`.
+
+<ParamField path="id" type="integer" required>
+  ID of the client to permanently remove.
+</ParamField>
+
+<ResponseField name="success" type="boolean">
+  `true` on success.
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Confirmation message from the model's `deleteHard()` method.
+</ResponseField>
+
+---
+
+### POST /api/clientes/upload-csv
+
+Bulk-import clients from a CSV file. **Admin role required.** The CSV must be semicolon-delimited with headers matching the client field names. Both UTF-8 and ISO-8859-1 (Windows Latin-1) encodings are accepted. RTNs must be exactly 14 digits; rows with invalid RTNs or missing required fields are skipped and reported in the `errors` array.
+
+**Auth:** Bearer token required + `role = "admin"`.
+
+**Content-Type:** `multipart/form-data`
+
+<ParamField body="csv" type="file" required>
+  The CSV file to import. Required columns: `nombre_empresa`, `rtn`, `rubro`, `representante`, `telefono`, `email`, `direccion`. Optional columns: `logo_url`, `activo`, `fecha_registro`, `fecha_actualizacion`.
+</ParamField>
+
+<ResponseField name="success" type="boolean">
+  `true` if the upload was processed (even if some rows had errors).
+</ResponseField>
+
+<ResponseField name="inserted" type="integer">
+  Number of client records successfully created.
+</ResponseField>
+
+<ResponseField name="errors" type="array">
+  Array of objects describing rows that could not be imported. Each item contains `nombre`, `rtn`, and `error` fields.
+</ResponseField>
+
+---
+
+## RTN Format Reference
+
+<Tip>
+  The RTN (*Registro Tributario Nacional*) is a 14-digit number assigned by the SAR. It is typically formatted as `XXXX-XXXX-XXXXXX` (e.g. `0801-1234-567890`) or provided as a plain 14-digit string (`08011234567890`). The API accepts either format as long as it matches `/^[0-9\-]+$/`.
+</Tip>
+
+---
+
+## Error Responses
+
+All endpoints return a consistent error envelope on failure:
+
+| HTTP Status | Meaning |
+|---|---|
+| `400` | Validation error, missing required fields, or no update fields provided |
+| `403` | Insufficient role (admin-only endpoint accessed by non-admin) |
+| `404` | Client not found |
+| `409` | RTN conflict — a client with this RTN already exists |
+| `500` | Unhandled server error |
+
+```json
+{
+  "error": "Ya existe un cliente con este RTN",
+  "message": "Ya existe un cliente con este RTN"
+}
+```
+
+---
+
+## Related Pages
+
+- [Authentication](/api/auth) — Obtain a JWT token
+- [Consolidaciones API](/api/consolidaciones) — Create consolidation records referencing a `cliente_id`
+- [Reports API](/api/reports) — Generate per-client tax reports
+- [Features — Clients](/features/clients) — Client management feature overview
+- [Audit Logs API](/api/logs) — View system events generated by client operations

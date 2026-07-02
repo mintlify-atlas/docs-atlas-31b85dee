@@ -1,0 +1,378 @@
+---
+title: "Package ContabilidadISV as a Windows Desktop App"
+sidebarTitle: "Electron"
+description: "Bundle ContabilidadISV as a standalone Windows installer using Electron and electron-builder. The packaged app includes the Express backend and serves the built frontend locally."
+---
+
+The Electron packaging mode turns ContabilidadISV into a fully self-contained Windows desktop application. The compiled React SPA, the Express.js backend, and a bundled copy of Node.js are all packed into a single NSIS installer — no separate server, no IIS, no nginx. When a user double-clicks the installer, all three layers are installed together and the app launches directly from the Start Menu or desktop shortcut. The backend still requires a reachable **SQL Server** instance (local or network), but everything else ships inside the `.exe`.
+
+<Note>
+  If you need to deploy ContabilidadISV as a headless web service instead, see the
+  [Web Deployment guide](/deployment/web).
+</Note>
+
+---
+
+## Prerequisites
+
+- **Windows 10 or Windows 11** build machine — the NSIS installer target (`electron:build:win`) only runs on Windows.
+- **Node.js 16 or later** — the root project, `frontend/`, and `backend/` all require a modern Node.js runtime.
+- **All npm dependencies installed** — root, frontend, and backend packages must all be present before building:
+
+```powershell
+npm install
+npm run install-all
+```
+
+- **SQL Server** (Express or full edition) accessible from the machine where the packaged app will run. See [Database Configuration](/configuration/database).
+
+---
+
+## Development Mode with Electron
+
+Running the app in development mode lets you iterate quickly — the React frontend has full hot-module replacement (HMR) and the Electron DevTools are always available.
+
+<Steps>
+  <Step title="Start the development environment">
+    A single command starts all three services concurrently:
+
+    ```powershell
+    npm run electron:dev
+    ```
+
+    Under the hood this runs:
+
+    ```
+    concurrently
+      "npm run dev:backend"          → Express on port 3001
+      "npm run dev:frontend"         → Vite HMR on port 5174
+      "node scripts/wait-for-services.js && electron ."
+    ```
+
+    The `wait-for-services.js` script polls both URLs before launching the Electron window, so you never see a blank screen while services are still starting.
+  </Step>
+
+  <Step title="Open DevTools">
+    Once the window is open press `Ctrl + Shift + I` (or `F12`) to open the Chromium DevTools panel. You can inspect React component state, monitor API network calls, and read backend `stdout`/`stderr` in the Console tab.
+  </Step>
+
+  <Step title="Edit and reload">
+    Changes to `frontend/src/` are reflected instantly via HMR. Changes to `backend/` require restarting the backend process (`Ctrl + C` and re-run `npm run electron:dev`), or use `npm run dev:backend` separately if you have `nodemon` configured.
+  </Step>
+</Steps>
+
+---
+
+## Building the Windows Installer
+
+<Steps>
+  <Step title="Install all dependencies">
+    Make sure root, frontend, and backend node_modules are all present and up to date.
+
+    ```powershell
+    npm run install-all
+    ```
+  </Step>
+
+  <Step title="Back up your development .env (recommended)">
+    The build process copies `backend/.env.production` into the packaged app as `.env`. If you want to preserve your current development environment file, back it up first:
+
+    ```powershell
+    Copy-Item ".\backend\.env" ".\backend\.env.backup"
+    ```
+  </Step>
+
+  <Step title="Run the Windows build command">
+    ```powershell
+    npm run electron:build:win
+    ```
+
+    This command chains four internal steps in sequence:
+
+    | Step | Command | What it does |
+    |------|---------|--------------|
+    | 1 | `npm run build:frontend` | Vite production build → `frontend/dist/` |
+    | 2 | `node scripts/copy-backend.js` | Copies `backend/` (minus `node_modules`, `uploads`, `database`, `.env`) to `dist-electron/backend/`, then runs `npm install --production` there |
+    | 3 | `node scripts/verify-build.js` | Asserts that `frontend/dist/index.html`, `backend/server.js`, `electron/main.js`, and `electron/preload.js` all exist before invoking the packager |
+    | 4 | `electron-builder --win` | Packages everything into an NSIS installer |
+
+    <Warning>
+      `electron-builder` needs permission to create symbolic links on Windows. Run your terminal **as Administrator**, or enable **Developer Mode** in *Windows Settings → Privacy & Security → For Developers* before executing this command. If you see `Cannot create symbolic link: A required privilege is not held by the client`, either option resolves it.
+    </Warning>
+  </Step>
+
+  <Step title="Locate the output files">
+    After a successful build, `dist-electron/` contains:
+
+    ```
+    dist-electron/
+    ├── Consolidación Contable Setup 1.0.0.exe   ← NSIS installer (~150-200 MB)
+    ├── Consolidación Contable Setup 1.0.0.exe.blockmap
+    ├── latest.yml
+    └── win-unpacked/
+        ├── Consolidación Contable.exe            ← Portable executable (no install needed)
+        └── resources/
+            └── app.asar.unpacked/
+                ├── backend/                      ← Express server (NODE_ENV=production)
+                ├── frontend/dist/                ← Built React SPA
+                └── electron/                     ← main.js + preload.js
+    ```
+
+    Distribute **`Consolidación Contable Setup 1.0.0.exe`** to end users. The `win-unpacked/` folder is a portable version useful for quick testing without running the installer.
+  </Step>
+
+  <Step title="Restore your development environment (if you backed it up)">
+    ```powershell
+    Move-Item ".\backend\.env.backup" ".\backend\.env" -Force
+    ```
+  </Step>
+</Steps>
+
+---
+
+## electron-builder Configuration
+
+The packager is configured via the `"build"` key in `package.json`. Key settings are shown below:
+
+```json
+{
+  "build": {
+    "appId": "com.contabilidad.consolidacion",
+    "productName": "Consolidación Contable",
+    "copyright": "Copyright © 2025 Sistema Contable",
+    "directories": {
+      "output": "dist-electron",
+      "buildResources": "build"
+    },
+    "files": [
+      "electron/**/*",
+      "frontend/dist/**/*",
+      "!frontend/dist/**/*.map",
+      "backend/**/*",
+      "!backend/uploads/**/*",
+      "!backend/database/**/*",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "backend/**/*",
+      "frontend/dist/**/*"
+    ],
+    "win": {
+      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "icon": "build/icon.png",
+      "publisherName": "Sistema Contable"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Consolidación Contable",
+      "license": "LICENSE.txt"
+    }
+  }
+}
+```
+
+Notable NSIS options:
+
+| Option | Value | Effect |
+|--------|-------|--------|
+| `oneClick` | `false` | Displays the full installation wizard instead of silently installing |
+| `allowToChangeInstallationDirectory` | `true` | Lets the user choose the install path |
+| `perMachine` | `false` | Installs per-user (no Administrator rights needed by default) |
+| `createDesktopShortcut` | `true` | Adds a shortcut to the user's desktop automatically |
+| `createStartMenuShortcut` | `true` | Adds an entry to the Start Menu |
+
+The `asarUnpack` option tells electron-builder to extract `backend/` and `frontend/dist/` outside the `.asar` archive. This is required because the Express server reads and writes files at runtime (uploads, logs) and cannot operate from within a read-only archive.
+
+---
+
+## App Icon
+
+The build system looks for the icon in the `build/` directory at the project root. The Windows target uses `build/icon.png` (as declared in `package.json`). For best results, supply a multi-resolution `.ico` file and update the `win.icon` field accordingly.
+
+<Steps>
+  <Step title="Prepare the icon file">
+    Create or obtain a square logo image at 1024 × 1024 px (PNG). Convert it to `.ico` format containing all required resolutions using a tool such as [icoconvert.com](https://icoconvert.com/) or [convertico.com](https://convertico.com/). The `.ico` file should include layers at:
+
+    **16 × 16 · 32 × 32 · 48 × 48 · 64 × 64 · 128 × 128 · 256 × 256**
+  </Step>
+
+  <Step title="Place the icon">
+    Save the file as `icon.ico` inside the `build/` directory:
+
+    ```
+    ContabilidadISV/
+    └── build/
+        └── icon.ico   ← place it here
+    ```
+
+    Then update `package.json` to point to the `.ico` file:
+
+    ```json
+    "win": {
+      "icon": "build/icon.ico"
+    }
+    ```
+  </Step>
+
+  <Step title="Rebuild">
+    Re-run `npm run electron:build:win` — the icon is embedded into the installer and the application `.exe` during packaging.
+  </Step>
+</Steps>
+
+---
+
+## Security in Electron
+
+ContabilidadISV follows the [Electron security best practices](https://www.electronjs.org/docs/latest/tutorial/security):
+
+| Feature | Setting | Why it matters |
+|---------|---------|----------------|
+| `contextIsolation` | **enabled** | Renderer process JavaScript cannot access Node.js APIs directly |
+| `nodeIntegration` | **disabled** | Prevents web content from calling `require()` or `fs` |
+| Preload script | `electron/preload.js` | The only bridge between the renderer and the main process |
+
+The preload script uses `contextBridge.exposeInMainWorld` to expose a minimal, curated API to the React frontend under `window.electron`:
+
+```javascript
+// electron/preload.js (excerpt)
+const { contextBridge, ipcRenderer } = require('electron');
+
+contextBridge.exposeInMainWorld('electron', {
+  getAppPath: () => ipcRenderer.sendSync('get-app-path'),
+  versions: {
+    node: process.versions.node,
+    chrome: process.versions.chrome,
+    electron: process.versions.electron
+  },
+  platform: process.platform,
+  isElectron: true,
+  env: {
+    API_URL: 'http://localhost:3002',  // backend URL for the frontend
+    NODE_ENV: process.env.NODE_ENV || 'production'
+  }
+});
+```
+
+The frontend reads `window.electron.env.API_URL` at startup to know which base URL to use when making API requests. In the packaged app this is always `http://localhost:3002`. See [Environment Variables](/configuration/environment) for how this is configured.
+
+<Warning>
+  Never enable `nodeIntegration: true` in production builds. Doing so allows any
+  JavaScript running in the renderer window (including injected third-party
+  scripts) to execute arbitrary Node.js code with full filesystem and network
+  access.
+</Warning>
+
+---
+
+## Estimated Installer Size
+
+| Artifact | Approximate Size |
+|----------|-----------------|
+| NSIS installer `.exe` | 150 – 200 MB |
+| Installed application | 300 – 400 MB |
+
+The size is dominated by the Chromium rendering engine and the bundled Node.js runtime, both of which are included by Electron regardless of application size. The Express backend, React frontend, and their dependencies are comparatively small.
+
+---
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Error: Cannot find module electron">
+    Root-level node_modules are missing. Run:
+
+    ```powershell
+    npm install
+    ```
+
+    This installs `electron`, `electron-builder`, `concurrently`, and `wait-on` as listed in `devDependencies`.
+  </Accordion>
+
+  <Accordion title="Build errors after changing dependencies">
+    Stale or mismatched node_modules across the three packages (root, frontend, backend) are the most common cause of cryptic build failures. Do a full clean-reinstall:
+
+    ```powershell
+    # Remove all node_modules directories
+    Remove-Item -Recurse -Force node_modules
+    Remove-Item -Recurse -Force frontend\node_modules
+    Remove-Item -Recurse -Force backend\node_modules
+
+    # Reinstall everything
+    npm install
+    npm run install-all
+    ```
+
+    Then rebuild:
+
+    ```powershell
+    npm run electron:build:win
+    ```
+  </Accordion>
+
+  <Accordion title="Blank window on launch">
+    The Electron window loads before the Express backend has finished starting. In development mode this is handled by `scripts/wait-for-services.js`, but in the packaged app a different mechanism controls the timing.
+
+    To diagnose:
+
+    1. Open DevTools (`Ctrl + Shift + I`) — check the Console tab for network errors.
+    2. Confirm the backend actually started by looking at `%APPDATA%\Consolidación Contable\logs`.
+    3. Verify SQL Server is running and the connection string in `backend/.env.production` is correct.
+
+    Re-run the dev mode to reproduce the issue with live logs:
+
+    ```powershell
+    npm run electron:dev
+    ```
+  </Accordion>
+
+  <Accordion title="Error: Cannot create symbolic link during packaging">
+    Windows requires elevated privileges to create symbolic links, which electron-builder uses internally. Choose one of:
+
+    - **Run as Administrator** — right-click your terminal and select *Run as administrator*, then re-run `npm run electron:build:win`.
+    - **Enable Developer Mode** — go to *Settings → Privacy & Security → For Developers* and turn on *Developer Mode*, then restart your terminal.
+  </Accordion>
+
+  <Accordion title="Error: Frontend is not built">
+    The `scripts/copy-backend.js` step aborts if `frontend/dist/` does not exist or `backend/.env.production` is missing.
+
+    ```powershell
+    # Build the frontend manually first
+    npm run build:frontend
+
+    # Verify .env.production exists
+    Get-ChildItem backend\.env*
+    ```
+
+    `backend/.env.production` must exist and contain at least `NODE_ENV=production` and valid `DB_*` credentials before packaging. See [Environment Variables](/configuration/environment).
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Environment Variables" icon="sliders" href="/configuration/environment">
+    Configure `backend/.env.production` with the correct SQL Server credentials, JWT secret, and CORS origin before packaging.
+  </Card>
+  <Card title="Database Configuration" icon="database" href="/configuration/database">
+    Set up SQL Server Express, create the `ContabilidadISV` database, and create the `contabilidad_app` user.
+  </Card>
+  <Card title="Security Configuration" icon="shield" href="/configuration/security">
+    Review JWT expiry, CORS policy, and Electron security flags before distributing to end users.
+  </Card>
+  <Card title="Web Deployment" icon="server" href="/deployment/web">
+    Deploy the same stack as a headless Express + Vite web application instead.
+  </Card>
+</CardGroup>
+
+<Tip>
+  Increment the `"version"` field in `package.json` before every distribution.
+  electron-builder embeds the version number into the installer filename
+  (`Consolidación Contable Setup X.X.X.exe`) and into `latest.yml`, which is
+  used by the auto-updater to detect new releases.
+</Tip>

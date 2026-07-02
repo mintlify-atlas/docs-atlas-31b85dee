@@ -1,0 +1,123 @@
+{
+  "projectType": "saas",
+  "projectName": "ContabilidadISV",
+  "projectDescription": "A full-stack accounting consolidation system for Honduran tax compliance (ISV/IST), featuring a React frontend, Express/SQL Server backend, and optional Electron desktop packaging.",
+  "theme": "luma",
+  "primaryColor": "#1E6DB4",
+  "lightColor": "#E8F1FB",
+  "darkColor": "#0F3A6A",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "architecture"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/environment",
+              "configuration/database",
+              "configuration/security"
+            ]
+          },
+          {
+            "group": "Core Features",
+            "pages": [
+              "features/consolidations",
+              "features/clients",
+              "features/reports",
+              "features/export",
+              "features/audit-logs"
+            ]
+          },
+          {
+            "group": "Deployment",
+            "pages": [
+              "deployment/web",
+              "deployment/electron"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Authentication",
+            "pages": [
+              "api/auth"
+            ]
+          },
+          {
+            "group": "Resources",
+            "pages": [
+              "api/consolidaciones",
+              "api/clientes",
+              "api/users",
+              "api/files",
+              "api/reports",
+              "api/logs",
+              "api/admin"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Double-entry accounting ledger with 55 chart-of-accounts entries (Debe/Haber)",
+    "Two consolidation types: Generales and Hoteles (with I.S.T. 4%)",
+    "Automatic ISV 15% and ISV 18% tax calculation formulas",
+    "Client (empresa) management with RTN validation",
+    "Excel and PDF export of consolidation records",
+    "Role-based access control (admin / user) via JWT",
+    "System audit log (bitácora) with categorized activity tracking",
+    "Multi-layer security: rate limiting, IP behavior analysis, automatic blocking",
+    "Electron desktop packaging for offline/local Windows deployment",
+    "SQL Server backend with mssql connection pooling"
+  ],
+  "publicApiSurface": [
+    "POST /api/auth/login",
+    "POST /api/auth/register",
+    "GET /api/auth/profile",
+    "POST /api/auth/logout",
+    "GET /api/auth/validate",
+    "GET /api/auth/login-history",
+    "POST /api/consolidaciones",
+    "GET /api/consolidaciones",
+    "GET /api/consolidaciones/summary",
+    "GET /api/consolidaciones/ist-statistics",
+    "GET /api/consolidaciones/cliente/:clienteId",
+    "GET /api/consolidaciones/:id",
+    "PUT /api/consolidaciones/:id",
+    "DELETE /api/consolidaciones/:id",
+    "GET /api/clientes",
+    "POST /api/clientes",
+    "PUT /api/clientes/:id",
+    "DELETE /api/clientes/:id",
+    "GET /api/users",
+    "POST /api/users",
+    "PUT /api/users/:id",
+    "DELETE /api/users/:id",
+    "POST /api/files/upload",
+    "GET /api/files/history",
+    "GET /api/files/download/:fileId",
+    "GET /api/files/data/:fileId",
+    "GET /api/reports/metrics",
+    "GET /api/reports/ranking",
+    "GET /api/reports/summaries",
+    "GET /api/logs",
+    "POST /api/logs",
+    "POST /api/admin/validate-system-password",
+    "GET /api/admin/security-stats",
+    "POST /api/admin/backup",
+    "POST /api/admin/delete"
+  ]
+}

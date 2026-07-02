@@ -1,0 +1,157 @@
+---
+title: "Creating and Managing Accounting Consolidations"
+sidebarTitle: "Consolidations"
+description: "ContabilidadISV supports two consolidation types — Generales and Hoteles — with a 55-account double-entry ledger and automatic ISV 15%, ISV 18%, and IST 4% tax calculations."
+---
+
+A **consolidación** (consolidation) in ContabilidadISV is a double-entry accounting ledger record that captures all debit (Debe) and credit (Haber) movements for one client company over a defined date range. Each consolidation is linked to a single client (empresa), stamped with the creating user, and stored in either the `consolidaciones_generales` or `consolidaciones_hoteles` SQL Server table depending on the client's business type. The ledger enforces double-entry balance: total Debe must equal total Haber, with a tolerance of less than L. 0.01 for the record to be marked as **balanceado**.
+
+---
+
+## Consolidation Types
+
+ContabilidadISV provides two mutually exclusive consolidation types, selected when creating a new record:
+
+### Generales
+
+Used for all non-hotel businesses (commerce, professional services, industry, clinics, etc.). The ledger contains **54 chart-of-accounts entries** (positions 1–54 after Caja y Bancos at position 0). The **I.S.T. 4%** row is hidden and excluded from all calculations in this mode.
+
+### Hoteles
+
+Used for hotel and tourism businesses. The ledger contains **55 chart-of-accounts entries** — the same 54 as Generales plus **I.S.T. 4% (Impuesto Sobre Turismo)** inserted at position 5 (after I.S.V. 18%). The I.S.T. Haber value is automatically computed as `Ventas Gravadas 15% (Haber) × 4%`.
+
+<Note>
+  When selecting **HOTELES**, a blue informational banner appears in the creation modal confirming that I.S.T. 4% will be included automatically.
+</Note>
+
+---
+
+## Chart of Accounts
+
+The following table lists all 55 accounts from the `datosIniciales` array. The **Auto-calculated** column indicates which cells are read-only because their values derive from a formula.
+
+| # | Account Name (Spanish) | Auto-calculated |
+|---|------------------------|-----------------|
+| 0 | Caja y Bancos | **Debe** = Σ Haber of accounts 1–54 (excluding I.S.T. if GENERALES); **Haber** = Σ Debe of accounts 1–54 |
+| 1 | Ventas Gravadas 15% | — |
+| 2 | I.S.V. 15% _(ventas)_ | **Haber** = Ventas Gravadas 15% × 15% |
+| 3 | Ventas Gravadas 18% | — |
+| 4 | I.S.V. 18% _(ventas)_ | **Haber** = Ventas Gravadas 18% × 18% |
+| 5 | I.S.T. 4% _(Hoteles only)_ | **Haber** = Ventas Gravadas 15% × 4% |
+| 6 | Ventas Exentas | — |
+| 7 | Ventas Exoneradas | — |
+| 8 | Ingresos por Honorarios | — |
+| 9 | Compras Gravadas 15% | — |
+| 10 | I.S.V. 15% _(compras)_ | **Debe** = Compras Gravadas 15% × 15% |
+| 11 | Compras Gravadas 18% | — |
+| 12 | I.S.V. 18% _(compras)_ | **Debe** = Compras Gravadas 18% × 18% |
+| 13 | Compras Exentas | — |
+| 14 | Compras Exoneradas | — |
+| 15 | Compra de Medicamentos e insumos | — |
+| 16 | Equipo y Material de Laboratorio | — |
+| 17 | Equipo y Material Odontológico | — |
+| 18 | Retenciones I.S.V. | — |
+| 19 | Sueldos y Salarios | — |
+| 20 | 13 Avo mes | — |
+| 21 | 14 Avo mes | — |
+| 22 | Prestaciones laborales | — |
+| 23 | Honorarios Médicos | — |
+| 24 | Mobiliario y Equipo | — |
+| 25 | Energía Eléctrica | — |
+| 26 | Suministro de Agua | — |
+| 27 | Hondutel | — |
+| 28 | Servicio de Internet | — |
+| 29 | IHSS Instituto Hondureño de Seguridad Social | — |
+| 30 | Aportaciones INFOP | — |
+| 31 | Aportaciones RAP | — |
+| 32 | Pagos CONATEL / Aportes FITT | — |
+| 33 | Papelería y Útiles | — |
+| 34 | Alquileres | — |
+| 35 | Combustibles y Lubricantes | — |
+| 36 | Seguros | — |
+| 37 | Viáticos / Gastos de viaje | — |
+| 38 | Impuestos Municipales | — |
+| 39 | Impuestos Estatales | — |
+| 40 | Reparaciones y Mantenimiento | — |
+| 41 | Insumos de Aseo | — |
+| 42 | Seguridad y Vigilancia | — |
+| 43 | Publicidad y Propaganda | — |
+| 44 | Materiales, Suministros y Accesorios | — |
+| 45 | Obligaciones Bancarias / Cooperativas | — |
+| 46 | Intereses Financieros | — |
+| 47 | Tasa de Seguridad Poblacional | — |
+| 48 | Adquisición de Vehículos | — |
+| 49 | Honorarios Profesionales | — |
+| 50 | Mantenimiento de Vehículos | — |
+| 51 | Fletes y encomiendas | — |
+| 52 | Honorarios Contables | — |
+| 53 | Honorarios Legales | — |
+| 54 | Gastos Varios | — |
+
+Auto-calculated cells are rendered with a **yellow background** (`bg-yellow-100`) in the UI and are `readOnly` — the input accepts no manual entry.
+
+<Note>
+  **Caja y Bancos** (position 0) is computed automatically from all other rows. Do not enter values manually in either its Debe or Haber cell — they will be overwritten by the formula on every render.
+</Note>
+
+---
+
+## Creating a Consolidation
+
+<Steps>
+  <Step title="Navigate to Consolidaciones → Crear Consolidación">
+    From the sidebar, click **Consolidaciones** and then **Crear Consolidación** to open the UploadSection view.
+  </Step>
+  <Step title="Click Nueva Consolidación">
+    Click the **Nueva Consolidación** button. A modal dialog opens.
+  </Step>
+  <Step title="Select a client">
+    Type in the search field to filter active clients by name or RTN. Select the correct client from the dropdown. The modal shows a green confirmation panel once a client is selected.
+  </Step>
+  <Step title="Choose Tipo de Rubro">
+    Select either **GENERALES** or **HOTELES** from the dropdown. For HOTELES, a note appears confirming that I.S.T. 4% will be included.
+  </Step>
+  <Step title="Enter the date range">
+    Choose **Por Mes** (select a calendar month and year — dates are set automatically) or **Por Período (Manual)** (enter `fecha_inicio` and `fecha_fin` directly as `YYYY-MM-DD`). The system checks for overlapping consolidations and will alert you if a conflict is found.
+  </Step>
+  <Step title="Click Iniciar Consolidación">
+    Click the **Iniciar Consolidación** button. The modal closes and the ledger table is ready for data entry.
+  </Step>
+  <Step title="Fill in Debe / Haber values">
+    Enter numeric values in the white (editable) cells. Auto-calculated cells (yellow background) update in real time as you type into their source rows. The balance status bar at the bottom shows whether totals are balanced.
+  </Step>
+  <Step title="Save the consolidation">
+    Click **Guardar cambios**. On success, the ExportModal opens offering immediate export to Excel or PDF.
+  </Step>
+</Steps>
+
+---
+
+## Editing and Deleting
+
+### Editing
+
+Consolidations can be edited through the **`ConsolidacionEditModal`** component, accessible from both the UploadSection and the HistorySection (click the amber pencil icon). Before saving, a **motivo** (reason for the edit) is required. Each changed field is recorded individually in the `BitacoraCambios` table so the full field-level audit trail is preserved. The system log records a `consolidacion_updated` action.
+
+### Deleting (Soft Delete)
+
+Deleting a consolidation sets `activo = 0` in the database — the record is never physically removed. Soft-deleted consolidations are excluded from all queries (`WHERE activo = 1`). The delete operation is available in the history view and requires the `tipo` query parameter (`GENERALES` or `HOTELES`) to identify the correct table.
+
+---
+
+## Related Pages
+
+<CardGroup cols={2}>
+  <Card title="Clients" icon="building" href="/features/clients">
+    Manage the client companies that consolidations are linked to.
+  </Card>
+  <Card title="Export" icon="file-export" href="/features/export">
+    Download any consolidation as Excel or PDF.
+  </Card>
+  <Card title="Reports" icon="chart-bar" href="/features/reports">
+    Aggregate consolidation data across periods and clients.
+  </Card>
+  <Card title="Consolidaciones API" icon="code" href="/api/consolidaciones">
+    REST endpoints for creating, reading, updating, and deleting consolidations.
+  </Card>
+</CardGroup>

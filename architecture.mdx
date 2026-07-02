@@ -1,0 +1,214 @@
+---
+title: "ContabilidadISV System Architecture Overview"
+sidebarTitle: "Architecture"
+description: "ContabilidadISV is a three-tier system: a React/TypeScript SPA, an Express REST API, and a SQL Server database, with an optional Electron shell for desktop deployment."
+---
+
+ContabilidadISV follows a classic three-tier architecture. The **presentation tier** is a React 18 + TypeScript single-page application built with Vite. It communicates exclusively through HTTP with the **logic tier**: an Express.js REST API that enforces authentication, validates inputs, and executes all business rules. The **data tier** is a Microsoft SQL Server database accessed through a managed `mssql` connection pool. An optional **Electron shell** wraps all three tiers into a self-contained Windows desktop application, spawning the backend as a child process and loading the pre-built frontend from the local filesystem.
+
+---
+
+## Frontend
+
+The frontend lives in `frontend/` and is scaffolded with **Vite**. TypeScript is used throughout. Tailwind CSS handles styling; `lucide-react` provides icons; `date-fns` handles locale-aware date formatting for Spanish (Honduras).
+
+### API client
+
+`frontend/src/services/api.ts` exports an Axios instance configured with:
+
+- **Base URL detection**: In a browser dev session the base URL is `/api` (proxied by Vite to `localhost:3002`). When running inside Electron, `window.electron.env.API_URL` is read from the preload script to point directly at `http://localhost:3002/api`.
+- **Request interceptor**: Reads the JWT from `localStorage` and injects it as `Authorization: Bearer <token>` on every request.
+- **Response interceptor**: On `401 Unauthorized`, clears `localStorage` and redirects to `/login`.
+
+### Auth context
+
+`frontend/src/contexts/AuthContext` provides `user`, `login`, and `logout` to the entire component tree. `useAuth()` is the primary hook consumed by `DashboardPage` and route guards.
+
+### Navigation sections
+
+`DashboardPage.tsx` is the authenticated shell. It renders a top navigation bar and swaps the content area by setting `activeSection`. The available sections and their access rules are:
+
+| Section key | Label | Minimum role |
+|---|---|---|
+| `home` | Inicio | `user` |
+| `upload` | Crear Consolidación | `user` |
+| `history` | Historial | `user` |
+| `reports` | Reportes | `user` |
+| `clients-view` | Ver y Añadir (Clientes) | `user` |
+| `csv-upload` | Cargar desde CSV | `admin` |
+| `logs` | Logs del Sistema | `admin` |
+| `users` | Gestión de Usuarios | `admin` |
+| `system-config` | Soporte técnico | `admin` |
+
+---
+
+## Backend
+
+The backend lives in `backend/` and is an **Express.js** application. It is started with `node backend/server.js` (or `npm run dev` inside `backend/` for nodemon hot-reload).
+
+### Route map
+
+| Mount path | File | Description |
+|---|---|---|
+| `/api/auth` | `routes/auth.js` | Login, register, profile, token validation, logout, login history (admin) |
+| `/api/consolidaciones` | `routes/consolidaciones.js` | CRUD for Generales and Hoteles consolidations, filtered history |
+| `/api/clientes` | `routes/clientes.js` | Client CRUD, status toggle, hard/soft delete, stats, logo upload |
+| `/api/users` | `routes/users.js` | User management (admin) |
+| `/api/files` | `routes/files.js` | File upload, download, history, consolidated data retrieval |
+| `/api/reports` | `routes/reports.js` | Dashboard summary, totals, metrics, ranking, period summaries |
+| `/api/logs` | `routes/logs.js` | System log retrieval and creation |
+| `/api/admin` | `routes/admin.js` | Admin-only utilities |
+
+### Auth middleware
+
+`backend/src/middleware/auth.js` exports two functions used across all protected routes:
+
+- **`authenticateToken`** — Verifies the `Authorization: Bearer <token>` header using `JWT_SECRET`. Attaches the decoded payload to `req.user`. Returns `401` if the token is absent or invalid.
+- **`requireRole(roles[])`** — Called after `authenticateToken`. Returns `403` if `req.user.role` is not in the permitted roles array. Example usage from `auth.js`:
+
+```js
+// Admin-only route in routes/auth.js
+router.get(
+  '/login-history',
+  authenticateToken,
+  requireRole(['admin']),
+  authController.getLoginHistory
+);
+```
+
+### Input validation
+
+All mutation routes use `express-validator` `body()` validators. For example, the login route requires `username` (min 3 chars) and `password` (non-empty); the register route additionally validates `email` format and enforces a minimum 6-character password.
+
+### Connection pooling
+
+`backend/src/models/Database.js` wraps the `mssql` library in a singleton `Database` class. On first use, `init()` opens a connection pool (`sql.connect(config)`) and stores it as `this.pool`. Every subsequent query reuses the pool. Configuration keys read from `process.env`:
+
+```
+DB_SERVER          → mssql config.server         (default: localhost)
+DB_NAME            → mssql config.database        (default: ContabilidadISV)
+DB_USER            → mssql config.user            (omit for Windows Auth)
+DB_PASSWORD        → mssql config.password
+DB_INSTANCE        → config.options.instanceName  (default: SQLEXPRESS)
+DB_ENCRYPT         → config.options.encrypt       (default: false)
+DB_TRUST_CERT      → config.options.trustServerCertificate (default: true)
+DB_CONNECTION_TIMEOUT → connectionTimeout         (default: 30000 ms)
+```
+
+See the [Environment Configuration reference](/configuration/environment) for a full variable listing.
+
+---
+
+## Database
+
+ContabilidadISV uses **Microsoft SQL Server**. The schema is initialised by `npm run init-db` (`backend/src/scripts/initDb.js`).
+
+### Tables
+
+| Table | Purpose |
+|---|---|
+| `users` | Accounts with `username`, `email`, `password` (bcrypt hash), `role` (`user` \| `admin`) |
+| `consolidaciones_generales` | Standard ISV consolidations — 55 accounts, Debe/Haber, ISV 15 %, ISV 18 % |
+| `consolidaciones_hoteles` | Hotel ISV+IST consolidations — same as Generales plus `ist_4` column |
+| `clientes` | Client profiles: `nombre_empresa`, `rtn`, `rubro`, `representante`, `telefono`, `email`, `direccion`, `logo_url`, `activo` |
+| `system_logs` | Audit trail: `user_id`, `action`, `description`, `ip_address`, `user_agent`, `created_at` |
+| `uploaded_files` | Metadata for files uploaded through the file service |
+
+### Why two consolidation tables?
+
+`consolidaciones_hoteles` has an `ist_4` column that `consolidaciones_generales` does not. Storing both types in a single table would require a nullable column and an implicit type discriminator, which makes tax-period queries and export templates more complex. Two dedicated tables keep the schema explicit and the SQL straightforward.
+
+See the [Database Configuration guide](/configuration/database) for migration commands and schema details.
+
+---
+
+## Electron mode
+
+The optional Electron shell packages the entire application into a single Windows executable using **electron-builder** with an NSIS installer target.
+
+### How `electron/main.js` works
+
+1. **Single-instance lock** — `app.requestSingleInstanceLock()` prevents duplicate windows.
+2. **Backend spawn** — In production (packaged) mode, `startBackend()` spawns `node backend/server.js` as a child process, passing `PORT=3002` via environment. The backend path is resolved from `process.resourcesPath/app.asar.unpacked/backend` (ASAR unpack path defined in `package.json` `build.asarUnpack`).
+3. **Window creation** — `createWindow()` creates a `BrowserWindow` (1400 × 900, min 1024 × 768) with:
+   - `nodeIntegration: false` and `contextIsolation: true` for security
+   - A preload script (`electron/preload.js`) that exposes `window.electron.isElectron` and `window.electron.env.API_URL` to the renderer
+4. **URL loading** — In dev mode, loads `http://localhost:5174`; in production, loads `frontend/dist/index.html` directly from the filesystem.
+5. **Graceful shutdown** — `app.on('before-quit')` kills the backend child process before the Electron process exits.
+
+### Build commands
+
+```bash
+# Development: Electron window + live Vite + live backend
+npm run electron:dev
+
+# Production build (current platform)
+npm run electron:build
+
+# Windows installer (.exe via NSIS)
+npm run electron:build:win
+```
+
+Output is written to `dist-electron/`. See the [Electron deployment guide](/deployment/electron) for signing, icon preparation, and distribution options.
+
+---
+
+## Monorepo directory structure
+
+```
+ContabilidadISV/
+├── package.json              # Root — orchestration scripts, electron-builder config
+├── electron/
+│   ├── main.js               # Electron main process (BrowserWindow, backend spawn)
+│   └── preload.js            # Context-isolated bridge (exposes window.electron)
+├── frontend/
+│   ├── vite.config.ts        # Vite config — proxies /api → localhost:3002
+│   ├── src/
+│   │   ├── main.tsx          # React entry point
+│   │   ├── pages/
+│   │   │   └── DashboardPage.tsx   # Authenticated shell & section router
+│   │   ├── components/
+│   │   │   └── sections/     # HomeSection, UploadSection, HistorySection, …
+│   │   ├── contexts/
+│   │   │   └── AuthContext.tsx     # JWT storage & user state
+│   │   ├── services/
+│   │   │   └── api.ts        # Axios instance, authService, consolidacionService, …
+│   │   └── types/            # Shared TypeScript interfaces
+│   └── dist/                 # Built assets (generated by npm run build:frontend)
+├── backend/
+│   ├── server.js             # Express app entry point (port 3002)
+│   ├── src/
+│   │   ├── models/
+│   │   │   └── Database.js   # mssql pool singleton
+│   │   ├── routes/           # auth, consolidaciones, clientes, users, files, reports, logs, admin
+│   │   ├── controllers/      # Business logic per route group
+│   │   └── middleware/
+│   │       └── auth.js       # authenticateToken, requireRole
+│   └── .env                  # ← You create this (see Quickstart step 2)
+├── scripts/
+│   ├── wait-for-services.js  # Used by electron:dev to gate Electron launch
+│   ├── copy-backend.js       # Copies backend into dist-electron for packaging
+│   └── verify-build.js       # Pre-flight check before electron-builder runs
+├── build/
+│   └── icon.ico              # App icon for Windows installer
+└── dist-electron/            # Packaged Electron output (generated)
+```
+
+---
+
+<CardGroup cols={2}>
+  <Card
+    title="Environment Configuration"
+    icon="gear"
+    href="/configuration/environment"
+  >
+    All `backend/.env` variables, their defaults, and guidance for production vs. development values.
+  </Card>
+  <Card
+    title="Database Configuration"
+    icon="database"
+    href="/configuration/database"
+  >
+    SQL Server setup, the full schema created by `init-db`, and migration strategies.
+  </Card>
+</CardGroup>

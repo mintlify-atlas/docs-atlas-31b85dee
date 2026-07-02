@@ -1,0 +1,123 @@
+---
+title: "Exporting Consolidations to Excel and PDF"
+sidebarTitle: "Export"
+description: "ContabilidadISV can export any consolidation record as a formatted Excel spreadsheet or PDF. Excel exports include all 55 account rows with Debe/Haber columns and auto-calculated totals."
+---
+
+ContabilidadISV provides first-class export capabilities for every consolidation record. After saving a consolidation you are immediately offered an export dialog, and historical consolidations can be exported at any time from the History view. Two formats are supported — **Excel (`.xlsx`)** and **PDF** — each with a layout optimized for Honduran accounting review and client delivery.
+
+---
+
+## Excel Export
+
+Excel exports are generated client-side using **ExcelJS** against a pre-formatted template (`.xlsx`) stored in the frontend's public directory. The template preserves all cell styles, number formats, and borders — no formatting is applied programmatically after the fact.
+
+### Template Mapping
+
+Each account row in the ledger maps to a specific worksheet row. The **DEBE** value is written to column **C** and the **HABER** value to column **D**.
+
+| Consolidation Type | Data rows | Totals row |
+|--------------------|-----------|------------|
+| GENERALES | Rows 8–61 (54 accounts) | Row **62** |
+| HOTELES | Rows 8–62 (55 accounts, includes I.S.T. 4% at row 13) | Row **63** |
+
+Template metadata cells:
+
+| Cell | Content |
+|------|---------|
+| `B3` | Period label (e.g., `Anual 2024`) |
+| `B4` | Client company name |
+| `B5` | Client RTN |
+| `D4` | Generation date (`DD/MM/YYYY`) |
+| `D5` | Username of the accountant |
+
+Cells corresponding to auto-calculated accounts (I.S.V. 15%, I.S.V. 18%, I.S.T. 4%, Caja y Bancos) retain their yellow fill from the template, visually indicating formula-driven values.
+
+<Note>
+  Excel files use the `.xlsx` format (Office Open XML). The file name follows the pattern `Resumen_Consolidacion_{year}_{periodo}.xlsx` for summary reports and a consolidation-specific name for individual exports.
+</Note>
+
+---
+
+## PDF Export
+
+PDF files are generated client-side using **jsPDF** with the **jspdf-autotable** plugin. A letter-size (`215.9 × 279.4 mm`) portrait page is produced with the following layout:
+
+- **Header:** Centered company logo (`/logo-home.png`), followed by the title `RESUMEN DE CONSOLIDACION POR CLIENTE` and a separator line.
+- **Period:** Large centered period label (e.g., `Trimestre 1 (01/2024 - 03/2024)`).
+- **Client info:** Client name and RTN on the left; generation date on the right.
+- **Account table:** Three columns — **CUENTA** (account name, 110 mm wide), **DEBE** (40 mm, right-aligned), **HABER** (40 mm, right-aligned). The header row uses a dark gray background with white text.
+- **Totals row:** `TOTALES` label with summed Debe and Haber in bold.
+- **Footer:** Firm name and confidentiality notice centered at the bottom of the page.
+
+When a summary covers multiple clients, each client gets its own table section on the same PDF, with 20 mm of vertical spacing between sections.
+
+---
+
+## How to Export
+
+### Exporting a single consolidation
+
+<Steps>
+  <Step title="Navigate to Consolidaciones → Historial">
+    Click **Consolidaciones** in the sidebar, then **Historial** to open the `HistorySection` table.
+  </Step>
+  <Step title="Find the consolidation to export">
+    Use the search bar to filter by client name, user, or consolidation type.
+  </Step>
+  <Step title="Click the export button">
+    - Click the **green download icon** to export directly to Excel.
+    - Click the **purple PDF button** to generate and download a PDF immediately.
+  </Step>
+  <Step title="File downloads automatically">
+    The browser triggers an automatic download. No server round-trip is required — all rendering happens in the browser.
+  </Step>
+</Steps>
+
+### Exporting immediately after saving
+
+After clicking **Guardar cambios** on a new consolidation, the **ExportModal** opens automatically. Choose **Excel** or **PDF** from the modal, or click close to skip the export and return to the dashboard.
+
+---
+
+## File Upload (CSV / Excel Import)
+
+In addition to exporting, ContabilidadISV supports uploading existing spreadsheet files for storage and reference.
+
+**Endpoint:** `POST /api/files/upload`
+
+| Property | Value |
+|----------|-------|
+| Accepted formats | `.xlsx`, `.xls` |
+| Maximum file size | 10 MB |
+| Storage | Backend server filesystem |
+| Auth required | Yes (Bearer token) |
+
+Uploaded files are associated with the uploading user's account and can be retrieved later:
+
+**Download endpoint:** `GET /api/files/download/:fileId`
+
+This returns the original file as a binary download with the correct `Content-Disposition` header.
+
+<Tip>
+  The file upload feature is useful for attaching source data sheets (e.g., SAR monthly declarations) alongside the system-generated consolidation. Files are tracked in the `uploaded_files` table with their original name, size, and upload timestamp.
+</Tip>
+
+---
+
+## Related Pages
+
+<CardGroup cols={2}>
+  <Card title="Consolidations" icon="table" href="/features/consolidations">
+    Create the consolidation records that are exported.
+  </Card>
+  <Card title="Reports" icon="chart-bar" href="/features/reports">
+    Export aggregated period summaries for multiple clients at once.
+  </Card>
+  <Card title="Files API" icon="code" href="/api/files">
+    REST endpoints for file upload and download.
+  </Card>
+  <Card title="Consolidaciones API" icon="code" href="/api/consolidaciones">
+    REST endpoints for fetching consolidation data used in exports.
+  </Card>
+</CardGroup>

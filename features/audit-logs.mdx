@@ -1,0 +1,170 @@
+---
+title: "System Audit Log (Bitácora) in ContabilidadISV"
+sidebarTitle: "Audit Logs"
+description: "ContabilidadISV records all significant user actions in a categorized audit log (bitácora). Admins can filter by category, priority, and user to track changes across the accounting system."
+---
+
+The **bitácora** (audit log) is ContabilidadISV's system-wide record of all meaningful user and system events. Every create, update, delete, login, and error action is written to the `system_logs` table in SQL Server by the `SystemLog` model. The `LogsSection` React component renders these records in a reverse-chronological timeline visible only to administrators.
+
+<Warning>
+  Only users with the **`admin`** role can access the audit log. Non-admin users who navigate to the Logs section will see an "Acceso Denegado" screen with a red shield icon. The same restriction is enforced at the API level — `GET /api/logs` requires an admin-scoped JWT token.
+</Warning>
+
+---
+
+## What Gets Logged
+
+The table below lists every action type that generates a log entry in the bitácora:
+
+| Action | Trigger |
+|--------|---------|
+| `USER_LOGIN` | Successful user authentication |
+| `USER_LOGOUT` | Explicit user sign-out |
+| `consolidacion_created` | A new consolidation (Generales or Hoteles) is saved |
+| `consolidacion_updated` | A consolidation is edited via `ConsolidacionEditModal` |
+| `consolidacion_deleted` | A consolidation is soft-deleted (`activo = 0`) |
+| `user_created` | A new user account is registered |
+| `user_updated` | A user account is modified |
+| `user_deleted` | A user account is deactivated or removed |
+| `cliente_created` | A new client (empresa) is added |
+| `cliente_updated` | A client record is modified |
+| `reporte_generated` | A report or export is generated |
+| `database_backup` | A database backup operation is performed |
+| `error` | An unhandled server-side error is caught and logged |
+| `SYSTEM_INIT` | The backend application starts up |
+
+<Note>
+  `api_request` action entries — generated automatically for every HTTP request — are **filtered out** of the bitácora display. Only meaningful business events from the list above are shown to administrators. This keeps the log focused and readable.
+</Note>
+
+---
+
+## Log Categories
+
+Each log entry is automatically assigned a **category** by the log formatter based on the `action` value:
+
+| Category | Assigned to actions |
+|----------|---------------------|
+| Inicio de Sesión | `USER_LOGIN` |
+| Cierre de Sesión | `USER_LOGOUT` |
+| Contabilidad | `consolidacion_created`, `consolidacion_updated`, `consolidacion_deleted` |
+| Gestión de Usuarios | `user_created`, `user_updated`, `user_deleted` |
+| Gestión de Clientes | `cliente_created`, `cliente_updated` |
+| Reportes | `reporte_generated` |
+| Sistema | `SYSTEM_INIT`, `database_backup` |
+| Errores | `error` |
+
+Each category also has an associated emoji icon (`category_icon`) rendered in the timeline to make scanning the feed fast.
+
+---
+
+## Log Priorities
+
+Every log entry carries a **priority** level that controls the badge color displayed in the UI:
+
+| Priority | Badge color | Used for |
+|----------|-------------|----------|
+| `normal` | Green | Routine successful operations (logins, data reads) |
+| `importante` | Blue | Significant state changes (consolidation edits, client updates) |
+| `critico` | Red | Errors, deletions, and security-related events |
+
+The `priority` value is set by the log formatter at write time and stored on the `system_logs` row.
+
+---
+
+## Viewing Logs in the Dashboard
+
+The `LogsSection` component is accessible from the **Bitácora** entry in the sidebar (admin users only).
+
+### Interface Overview
+
+- **Header card:** Shows "Bitácora del Sistema" title and a green "Sistema Activo" indicator.
+- **Statistics cards:** Displays the total log count and the number of distinct categories currently in the log.
+- **Filter bar:** Two dropdowns — **Todas las categorías** and **Todas las prioridades** — filter the visible entries client-side without re-fetching. An **Actualizar** button reloads the latest 100 entries from the server.
+- **Timeline feed:** Each entry shows:
+  - Category emoji icon in a circular avatar
+  - `formatted_title` (or raw `action` as fallback)
+  - Priority badge (colored pill with icon)
+  - Category badge (gray pill)
+  - `formatted_message` (human-readable description)
+  - Username (or "Sistema" for automated events)
+  - **Friendly date** formatted for Honduras UTC−6 (e.g., "hace 5 minutos")
+  - `location_info` (source IP address, when available)
+
+Entries are loaded in reverse-chronological order (newest first). The timeline is capped at **100 entries** per load to keep the view responsive.
+
+---
+
+## API Access
+
+**Endpoint:** `GET /api/logs`
+
+Requires: `Authorization: Bearer <admin_token>`
+
+Returns paginated log entries with aggregate statistics.
+
+**Query parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `limit` | number | Maximum number of entries to return (default 100) |
+| `userId` | number | Filter entries by a specific user ID |
+| `action` | string | Filter entries by action type |
+
+**Example — fetch last 50 consolidation events:**
+
+```http
+GET /api/logs?limit=50&action=consolidacion_created
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+**Example response shape:**
+
+```json
+{
+  "logs": [
+    {
+      "id": 1042,
+      "username": "jmendoza",
+      "action": "consolidacion_created",
+      "description": "Usuario jmendoza creó nueva consolidación GENERALES para cliente ID: 12",
+      "ip_address": "192.168.1.45",
+      "created_at": "2024-11-15T14:32:07.000Z",
+      "formatted_title": "Nueva Consolidación Creada",
+      "formatted_message": "Se registró una consolidación Generales para el cliente ID 12.",
+      "category": "Contabilidad",
+      "priority": "importante",
+      "category_icon": "📊",
+      "friendly_date": "hace 3 horas",
+      "location_info": "192.168.1.45"
+    }
+  ],
+  "total": 1042,
+  "statistics": {
+    "total": 1042,
+    "today": 14,
+    "thisWeek": 87,
+    "byCategory": { "Contabilidad": 420, "Inicio de Sesión": 315 },
+    "byPriority": { "normal": 700, "importante": 280, "critico": 62 }
+  }
+}
+```
+
+---
+
+## Related Pages
+
+<CardGroup cols={2}>
+  <Card title="Consolidations" icon="table" href="/features/consolidations">
+    Every consolidation create, update, and delete generates a bitácora entry.
+  </Card>
+  <Card title="Clients" icon="building" href="/features/clients">
+    Client creation and updates are tracked in the Gestión de Clientes category.
+  </Card>
+  <Card title="Logs API" icon="code" href="/api/logs">
+    REST endpoint for programmatic access to the audit log.
+  </Card>
+  <Card title="Security Configuration" icon="shield" href="/configuration/security">
+    JWT authentication and role-based access control settings.
+  </Card>
+</CardGroup>

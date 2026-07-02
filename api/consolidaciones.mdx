@@ -1,0 +1,763 @@
+---
+title: "Consolidaciones API — CRUD and Query Endpoints"
+sidebarTitle: "Consolidaciones"
+description: "REST endpoints for creating, reading, updating, and deleting accounting consolidations. Supports both Generales and Hoteles types with full 55-account double-entry data."
+---
+
+All consolidation endpoints require a valid JWT token in the `Authorization` header (`Bearer <token>`). Consolidations represent monthly double-entry ledger records for a client. Each record is stored in either `consolidaciones_generales` or `consolidaciones_hoteles` depending on the value of `tipoRubro` supplied in the request. Non-admin users can only retrieve their own records; admin users receive records across all users. Every write operation is automatically registered in the system audit log ([Audit Logs](/api/logs)).
+
+---
+
+## POST /api/consolidaciones
+
+Create a new consolidation record. The `tipoRubro` field determines which database table is targeted: `HOTELES` writes to `consolidaciones_hoteles`; any other value (including omission) defaults to `consolidaciones_generales`. `usuario_id` is automatically set from the authenticated JWT — it is not accepted from the request body.
+
+**Auth:** Bearer token required.
+
+### Request Body
+
+<ParamField body="tipoRubro" type="string" required>
+  Determines the target table. Accepted values: `GENERALES` (default) or `HOTELES`.
+</ParamField>
+
+<ParamField body="cliente_id" type="integer" required>
+  ID of the client company this consolidation belongs to. Must reference an existing, active client. See [Clientes API](/api/clientes).
+</ParamField>
+
+<ParamField body="fecha_inicio" type="string" required>
+  Period start date in `YYYY-MM-DD` format (e.g. `"2024-01-01"`).
+</ParamField>
+
+<ParamField body="fecha_fin" type="string" required>
+  Period end date in `YYYY-MM-DD` format (e.g. `"2024-01-31"`).
+</ParamField>
+
+<ParamField body="observaciones" type="string">
+  Optional free-text remarks for this consolidation period.
+</ParamField>
+
+#### Accounting Fields — 55 Accounts × Debe + Haber
+
+Each of the 55 chart-of-accounts entries has two numeric fields: one suffixed `_debe` (debit) and one suffixed `_haber` (credit). All default to `0` if omitted. Values are stored as `DECIMAL(18,2)`.
+
+<ParamField body="caja_bancos_debe" type="number">
+  Cash and bank accounts — debit side.
+</ParamField>
+
+<ParamField body="caja_bancos_haber" type="number">
+  Cash and bank accounts — credit side.
+</ParamField>
+
+<ParamField body="ventas_gravadas_15_debe" type="number">
+  Sales taxable at 15% ISV — debit side.
+</ParamField>
+
+<ParamField body="ventas_gravadas_15_haber" type="number">
+  Sales taxable at 15% ISV — credit side.
+</ParamField>
+
+<ParamField body="isv_15_ventas_debe" type="number">
+  ISV collected on 15% sales — debit side.
+</ParamField>
+
+<ParamField body="isv_15_ventas_haber" type="number">
+  ISV collected on 15% sales — credit side.
+</ParamField>
+
+<ParamField body="ventas_gravadas_18_debe" type="number">
+  Sales taxable at 18% ISV (alcoholic beverages / tobacco) — debit side.
+</ParamField>
+
+<ParamField body="ventas_gravadas_18_haber" type="number">
+  Sales taxable at 18% ISV — credit side.
+</ParamField>
+
+<ParamField body="isv_18_ventas_debe" type="number">
+  ISV collected on 18% sales — debit side.
+</ParamField>
+
+<ParamField body="isv_18_ventas_haber" type="number">
+  ISV collected on 18% sales — credit side.
+</ParamField>
+
+<ParamField body="ventas_exentas_debe" type="number">
+  Exempt sales — debit side.
+</ParamField>
+
+<ParamField body="ventas_exentas_haber" type="number">
+  Exempt sales — credit side.
+</ParamField>
+
+<ParamField body="ventas_exoneradas_debe" type="number">
+  Zero-rated (exonerated) sales — debit side.
+</ParamField>
+
+<ParamField body="ventas_exoneradas_haber" type="number">
+  Zero-rated sales — credit side.
+</ParamField>
+
+<ParamField body="ingresos_honorarios_debe" type="number">
+  Fee / professional services income — debit side.
+</ParamField>
+
+<ParamField body="ingresos_honorarios_haber" type="number">
+  Fee / professional services income — credit side.
+</ParamField>
+
+<ParamField body="compras_gravadas_15_debe" type="number">
+  Purchases taxable at 15% ISV — debit side.
+</ParamField>
+
+<ParamField body="compras_gravadas_15_haber" type="number">
+  Purchases taxable at 15% ISV — credit side.
+</ParamField>
+
+<ParamField body="isv_15_compras_debe" type="number">
+  ISV paid on 15% purchases — debit side.
+</ParamField>
+
+<ParamField body="isv_15_compras_haber" type="number">
+  ISV paid on 15% purchases — credit side.
+</ParamField>
+
+<ParamField body="compras_gravadas_18_debe" type="number">
+  Purchases taxable at 18% ISV — debit side.
+</ParamField>
+
+<ParamField body="compras_gravadas_18_haber" type="number">
+  Purchases taxable at 18% ISV — credit side.
+</ParamField>
+
+<ParamField body="isv_18_compras_debe" type="number">
+  ISV paid on 18% purchases — debit side.
+</ParamField>
+
+<ParamField body="isv_18_compras_haber" type="number">
+  ISV paid on 18% purchases — credit side.
+</ParamField>
+
+<ParamField body="compras_exentas_debe" type="number">
+  Exempt purchases — debit side.
+</ParamField>
+
+<ParamField body="compras_exentas_haber" type="number">
+  Exempt purchases — credit side.
+</ParamField>
+
+<ParamField body="compras_exoneradas_debe" type="number">
+  Zero-rated purchases — debit side.
+</ParamField>
+
+<ParamField body="compras_exoneradas_haber" type="number">
+  Zero-rated purchases — credit side.
+</ParamField>
+
+<ParamField body="retenciones_isv_debe" type="number">
+  ISV withholdings — debit side.
+</ParamField>
+
+<ParamField body="retenciones_isv_haber" type="number">
+  ISV withholdings — credit side.
+</ParamField>
+
+<ParamField body="sueldos_salarios_debe" type="number">
+  Wages and salaries — debit side.
+</ParamField>
+
+<ParamField body="sueldos_salarios_haber" type="number">
+  Wages and salaries — credit side.
+</ParamField>
+
+<ParamField body="treceavo_mes_debe" type="number">
+  Thirteenth-month bonus (aguinaldo) — debit side.
+</ParamField>
+
+<ParamField body="treceavo_mes_haber" type="number">
+  Thirteenth-month bonus — credit side.
+</ParamField>
+
+<ParamField body="catorceavo_mes_debe" type="number">
+  Fourteenth-month bonus — debit side.
+</ParamField>
+
+<ParamField body="catorceavo_mes_haber" type="number">
+  Fourteenth-month bonus — credit side.
+</ParamField>
+
+<ParamField body="prestaciones_laborales_debe" type="number">
+  Severance and labor benefits — debit side.
+</ParamField>
+
+<ParamField body="prestaciones_laborales_haber" type="number">
+  Severance and labor benefits — credit side.
+</ParamField>
+
+<ParamField body="ihss_debe" type="number">
+  IHSS (Instituto Hondureño de Seguridad Social) contributions — debit side.
+</ParamField>
+
+<ParamField body="ihss_haber" type="number">
+  IHSS contributions — credit side.
+</ParamField>
+
+<ParamField body="aportaciones_infop_debe" type="number">
+  INFOP (vocational training fund) contributions — debit side.
+</ParamField>
+
+<ParamField body="aportaciones_infop_haber" type="number">
+  INFOP contributions — credit side.
+</ParamField>
+
+<ParamField body="aportaciones_rap_debe" type="number">
+  RAP (housing pension fund) contributions — debit side.
+</ParamField>
+
+<ParamField body="aportaciones_rap_haber" type="number">
+  RAP contributions — credit side.
+</ParamField>
+
+<ParamField body="energia_electrica_debe" type="number">
+  Electricity expense — debit side.
+</ParamField>
+
+<ParamField body="energia_electrica_haber" type="number">
+  Electricity expense — credit side.
+</ParamField>
+
+<ParamField body="suministro_agua_debe" type="number">
+  Water supply expense — debit side.
+</ParamField>
+
+<ParamField body="suministro_agua_haber" type="number">
+  Water supply expense — credit side.
+</ParamField>
+
+<ParamField body="hondutel_debe" type="number">
+  Hondutel (telephone) expense — debit side.
+</ParamField>
+
+<ParamField body="hondutel_haber" type="number">
+  Hondutel expense — credit side.
+</ParamField>
+
+<ParamField body="servicio_internet_debe" type="number">
+  Internet service expense — debit side.
+</ParamField>
+
+<ParamField body="servicio_internet_haber" type="number">
+  Internet service expense — credit side.
+</ParamField>
+
+<ParamField body="alquileres_debe" type="number">
+  Rent expense — debit side.
+</ParamField>
+
+<ParamField body="alquileres_haber" type="number">
+  Rent expense — credit side.
+</ParamField>
+
+<ParamField body="combustibles_lubricantes_debe" type="number">
+  Fuel and lubricants — debit side.
+</ParamField>
+
+<ParamField body="combustibles_lubricantes_haber" type="number">
+  Fuel and lubricants — credit side.
+</ParamField>
+
+<ParamField body="seguros_debe" type="number">
+  Insurance premiums — debit side.
+</ParamField>
+
+<ParamField body="seguros_haber" type="number">
+  Insurance premiums — credit side.
+</ParamField>
+
+<ParamField body="impuestos_municipales_debe" type="number">
+  Municipal taxes — debit side.
+</ParamField>
+
+<ParamField body="impuestos_municipales_haber" type="number">
+  Municipal taxes — credit side.
+</ParamField>
+
+<ParamField body="impuestos_estatales_debe" type="number">
+  Central government taxes — debit side.
+</ParamField>
+
+<ParamField body="impuestos_estatales_haber" type="number">
+  Central government taxes — credit side.
+</ParamField>
+
+<ParamField body="honorarios_profesionales_debe" type="number">
+  Professional service fees — debit side.
+</ParamField>
+
+<ParamField body="honorarios_profesionales_haber" type="number">
+  Professional service fees — credit side.
+</ParamField>
+
+<ParamField body="honorarios_contables_debe" type="number">
+  Accounting fees — debit side.
+</ParamField>
+
+<ParamField body="honorarios_contables_haber" type="number">
+  Accounting fees — credit side.
+</ParamField>
+
+<ParamField body="honorarios_legales_debe" type="number">
+  Legal fees — debit side.
+</ParamField>
+
+<ParamField body="honorarios_legales_haber" type="number">
+  Legal fees — credit side.
+</ParamField>
+
+<ParamField body="gastos_varios_debe" type="number">
+  Miscellaneous expenses — debit side.
+</ParamField>
+
+<ParamField body="gastos_varios_haber" type="number">
+  Miscellaneous expenses — credit side.
+</ParamField>
+
+<Info>
+  The remaining accounts follow the same `_debe` / `_haber` pattern: `compra_medicamentos_insumos`, `equipo_material_laboratorio`, `equipo_material_odontologico`, `honorarios_medicos`, `mobiliario_equipo`, `pagos_conatel_fitt`, `papeleria_utiles`, `viaticos_gastos_viaje`, `reparaciones_mantenimiento`, `insumos_aseo`, `seguridad_vigilancia`, `materiales_suministros`, `publicidad_propaganda`, `obligaciones_bancarias_cooperativas`, `intereses_financieros`, `tasa_seguridad_poblacional`, `adquisicion_vehiculos`, `mantenimiento_vehiculos`, `fletes_encomiendas`. All 110 fields (55 × 2) are accepted but optional; they default to `0`.
+</Info>
+
+### Response
+
+<ResponseField name="message" type="string">
+  Human-readable confirmation: `"Consolidación creada exitosamente"`.
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  The newly created consolidation record as persisted in the database, including the server-assigned `id`, the calculated `total_debe`, `total_haber`, `diferencia`, `balanceado`, and an injected `tipo` field (`"GENERALES"` or `"HOTELES"`).
+
+  <Expandable title="data fields">
+    <ResponseField name="id" type="integer">
+      Auto-generated primary key for the new record.
+    </ResponseField>
+    <ResponseField name="tipo" type="string">
+      Table target echoed back: `"GENERALES"` or `"HOTELES"`.
+    </ResponseField>
+    <ResponseField name="total_debe" type="number">
+      Server-computed sum of all 55 debit fields, rounded to 2 decimal places.
+    </ResponseField>
+    <ResponseField name="total_haber" type="number">
+      Server-computed sum of all 55 credit fields, rounded to 2 decimal places.
+    </ResponseField>
+    <ResponseField name="diferencia" type="number">
+      `total_debe − total_haber`. Used to assess ledger balance.
+    </ResponseField>
+    <ResponseField name="balanceado" type="boolean">
+      `true` when `|diferencia| < 0.01` (i.e. the entry is balanced to within one centavo).
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Example
+
+```bash
+curl -X POST https://api.example.com/api/consolidaciones \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tipoRubro": "GENERALES",
+    "cliente_id": 7,
+    "fecha_inicio": "2024-01-01",
+    "fecha_fin": "2024-01-31",
+    "observaciones": "Enero 2024 — primer cierre",
+    "ventas_gravadas_15_debe": 150000.00,
+    "isv_15_ventas_haber": 22500.00,
+    "caja_bancos_haber": 127500.00
+  }'
+```
+
+```json
+{
+  "message": "Consolidación creada exitosamente",
+  "data": {
+    "id": 42,
+    "tipo": "GENERALES",
+    "cliente_id": 7,
+    "usuario_id": 3,
+    "fecha_inicio": "2024-01-01",
+    "fecha_fin": "2024-01-31",
+    "observaciones": "Enero 2024 — primer cierre",
+    "ventas_gravadas_15_debe": 150000.00,
+    "isv_15_ventas_haber": 22500.00,
+    "caja_bancos_haber": 127500.00,
+    "total_debe": 150000.00,
+    "total_haber": 150000.00,
+    "diferencia": 0.00,
+    "balanceado": true
+  }
+}
+```
+
+---
+
+## GET /api/consolidaciones
+
+List consolidation records from both `consolidaciones_generales` and `consolidaciones_hoteles` (or either table when `tipo` is specified). Results are sorted by `fecha_creacion` descending. Non-admin users receive only their own records.
+
+**Auth:** Bearer token required.
+
+### Query Parameters
+
+<ParamField query="cliente_id" type="integer">
+  Filter records to a specific client ID.
+</ParamField>
+
+<ParamField query="fecha_desde" type="string">
+  Inclusive lower bound on `fecha_inicio` (`YYYY-MM-DD`).
+</ParamField>
+
+<ParamField query="fecha_hasta" type="string">
+  Inclusive upper bound on `fecha_fin` (`YYYY-MM-DD`).
+</ParamField>
+
+<ParamField query="tipo" type="string">
+  Restrict results to one table. Accepted values: `GENERALES` or `HOTELES`. Omit to return records from both tables.
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  `"Consolidaciones obtenidas exitosamente"`
+</ResponseField>
+
+<ResponseField name="data" type="array">
+  Array of consolidation objects. Each element contains all 110 account fields plus joined columns `cliente_nombre`, `cliente_rtn`, `usuario_nombre`, computed `total_debe`, `total_haber`, and the injected `tipo` discriminator.
+</ResponseField>
+
+<ResponseField name="total" type="integer">
+  Total number of records in the response array.
+</ResponseField>
+
+### Example
+
+```bash
+curl -X GET "https://api.example.com/api/consolidaciones?cliente_id=7&tipo=GENERALES&fecha_desde=2024-01-01&fecha_hasta=2024-12-31" \
+  -H "Authorization: Bearer <token>"
+```
+
+```json
+{
+  "message": "Consolidaciones obtenidas exitosamente",
+  "data": [
+    {
+      "id": 42,
+      "tipo": "GENERALES",
+      "cliente_id": 7,
+      "cliente_nombre": "Farmacia Honduras S.A.",
+      "cliente_rtn": "08019999123456",
+      "usuario_id": 3,
+      "usuario_nombre": "jperez",
+      "fecha_inicio": "2024-01-01",
+      "fecha_fin": "2024-01-31",
+      "total_debe": 150000.00,
+      "total_haber": 150000.00,
+      "diferencia": 0.00,
+      "balanceado": true,
+      "fecha_creacion": "2024-02-05T14:22:10.000Z"
+    }
+  ],
+  "total": 1
+}
+```
+
+---
+
+## GET /api/consolidaciones/summary
+
+Returns an aggregate summary across both tables, including record counts, total debit/credit sums, total IST collected (hoteles only), and count of balanced entries. Useful for dashboard widgets.
+
+**Auth:** Bearer token required.
+
+### Query Parameters
+
+<ParamField query="cliente_id" type="integer">
+  Scope the summary to a single client.
+</ParamField>
+
+<ParamField query="fecha_desde" type="string">
+  Filter on `fecha_inicio ≥ fecha_desde` (`YYYY-MM-DD`).
+</ParamField>
+
+<ParamField query="fecha_hasta" type="string">
+  Filter on `fecha_fin ≤ fecha_hasta` (`YYYY-MM-DD`).
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  `"Resumen obtenido exitosamente"`
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  Aggregate summary object.
+
+  <Expandable title="data fields">
+    <ResponseField name="total_consolidaciones" type="integer">
+      Combined count of GENERALES and HOTELES records matching the filter.
+    </ResponseField>
+    <ResponseField name="consolidaciones_generales" type="integer">
+      Count of GENERALES records.
+    </ResponseField>
+    <ResponseField name="consolidaciones_hoteles" type="integer">
+      Count of HOTELES records.
+    </ResponseField>
+    <ResponseField name="total_debe_generales" type="number">
+      Sum of `total_debe` across all GENERALES records.
+    </ResponseField>
+    <ResponseField name="total_haber_generales" type="number">
+      Sum of `total_haber` across all GENERALES records.
+    </ResponseField>
+    <ResponseField name="total_debe_hoteles" type="number">
+      Sum of `total_debe` across all HOTELES records.
+    </ResponseField>
+    <ResponseField name="total_haber_hoteles" type="number">
+      Sum of `total_haber` across all HOTELES records.
+    </ResponseField>
+    <ResponseField name="total_ist_hoteles" type="number">
+      Sum of `ist_4_haber` across all HOTELES records — aggregate I.S.T. collected.
+    </ResponseField>
+    <ResponseField name="consolidaciones_balanceadas" type="integer">
+      Count of records (from both tables) where `balanceado = true`.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+---
+
+## GET /api/consolidaciones/ist-statistics
+
+Returns I.S.T. (Impuesto Sobre Turismo) statistics derived exclusively from `consolidaciones_hoteles`. Useful for tourism-tax reporting dashboards. See [Features — Consolidations](/features/consolidations) for details on the hotel accounting schema.
+
+**Auth:** Bearer token required.
+
+### Query Parameters
+
+<ParamField query="cliente_id" type="integer">
+  Scope statistics to a single hotel client.
+</ParamField>
+
+<ParamField query="fecha_desde" type="string">
+  Start of date range (`YYYY-MM-DD`).
+</ParamField>
+
+<ParamField query="fecha_hasta" type="string">
+  End of date range (`YYYY-MM-DD`).
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  `"Estadísticas de I.S.T. obtenidas exitosamente"`
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  I.S.T. statistics object as returned by `ConsolidacionHoteles.getISTStatistics()`. Shape varies by implementation but typically includes totals per IST account, period breakdowns, and per-client aggregates.
+</ResponseField>
+
+---
+
+## GET /api/consolidaciones/cliente/:clienteId
+
+Retrieve all consolidations (from both tables, or filtered by `tipo`) for a specific client. The client record is validated to exist before querying consolidations.
+
+**Auth:** Bearer token required.
+
+### Path Parameters
+
+<ParamField path="clienteId" type="integer" required>
+  The numeric ID of the client.
+</ParamField>
+
+### Query Parameters
+
+<ParamField query="tipo" type="string">
+  Restrict to one table: `GENERALES` or `HOTELES`. Omit to return records from both.
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  `"Consolidaciones del cliente obtenidas exitosamente"`
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  <Expandable title="data fields">
+    <ResponseField name="cliente" type="object">
+      Full client record as returned by `Cliente.getById()`. See [Clientes API](/api/clientes).
+    </ResponseField>
+    <ResponseField name="consolidaciones" type="array">
+      Sorted array of consolidation objects, each enriched with `tipo`, `cliente_nombre`, `cliente_rtn`, and `usuario_nombre`.
+    </ResponseField>
+    <ResponseField name="total" type="integer">
+      Count of consolidation records returned.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+---
+
+## GET /api/consolidaciones/:id
+
+Fetch a single consolidation by its numeric ID. The `tipo` query parameter is **required** because the record can exist in either table and there is no cross-table ID lookup.
+
+**Auth:** Bearer token required.
+
+### Path Parameters
+
+<ParamField path="id" type="integer" required>
+  Numeric primary key of the consolidation record.
+</ParamField>
+
+### Query Parameters
+
+<ParamField query="tipo" type="string" required>
+  Which table to query. Must be `GENERALES` or `HOTELES`.
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  `"Consolidación obtenida exitosamente"`
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  Full consolidation record including all 110 account fields, joined `cliente_nombre`, `cliente_rtn`, `usuario_nombre`, computed `total_debe`, `total_haber`, `diferencia`, `balanceado`, and the echoed `tipo` discriminator.
+</ResponseField>
+
+---
+
+## PUT /api/consolidaciones/:id
+
+Update an existing consolidation. Both `tipoRubro` and `motivo` are required in the request body. The server compares each submitted field against the current database value and rejects the request if no actual changes are detected. Every changed field is individually logged to `BitacoraCambios` (see [Audit Logs](/api/logs)).
+
+**Auth:** Bearer token required.
+
+<Warning>
+  `tipoRubro` and `motivo` are required. The update will be rejected with `400` if either is missing, or if the submitted data is identical to the current record.
+</Warning>
+
+### Path Parameters
+
+<ParamField path="id" type="integer" required>
+  Numeric ID of the consolidation to update.
+</ParamField>
+
+### Request Body
+
+<ParamField body="tipoRubro" type="string" required>
+  Must be `GENERALES` or `HOTELES` — identifies the target table.
+</ParamField>
+
+<ParamField body="motivo" type="string" required>
+  Free-text reason for the edit. Stored verbatim in the audit log entry for each changed field.
+</ParamField>
+
+<ParamField body="fecha_inicio" type="string">
+  New period start date. Optional — only include fields you want to change.
+</ParamField>
+
+<ParamField body="fecha_fin" type="string">
+  New period end date.
+</ParamField>
+
+<ParamField body="observaciones" type="string">
+  Updated remarks.
+</ParamField>
+
+<ParamField body="[account]_debe" type="number">
+  Updated debit value for any of the 55 account fields. Fields ending in `_debe` or `_haber` are coerced to `DECIMAL(18,2)`; empty strings and `null` are treated as `0`.
+</ParamField>
+
+<ParamField body="[account]_haber" type="number">
+  Updated credit value for any of the 55 account fields.
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  `"Consolidación actualizada exitosamente"`
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  Full updated consolidation record as re-fetched from the database after the update.
+</ResponseField>
+
+<ResponseField name="changesCount" type="integer">
+  Number of individual fields that were changed. Each changed field generates one `BitacoraCambios` record.
+</ResponseField>
+
+---
+
+## DELETE /api/consolidaciones/:id
+
+Soft-delete a consolidation record. The row is **not removed** from the database — instead, `activo` is set to `0` and `fecha_actualizacion` is stamped with the current server time (`GETDATE()`). The record will no longer appear in any `GET` responses, but all data is preserved for audit purposes.
+
+**Auth:** Bearer token required.
+
+<Note>
+  This is a **soft delete**. Data is preserved in the database with `activo = 0`. There is no hard-delete endpoint for consolidations. To recover a soft-deleted record, contact your database administrator.
+</Note>
+
+### Path Parameters
+
+<ParamField path="id" type="integer" required>
+  Numeric ID of the consolidation to deactivate.
+</ParamField>
+
+### Query Parameters
+
+<ParamField query="tipo" type="string" required>
+  Which table to target: `GENERALES` or `HOTELES`. This parameter is required — the endpoint returns `400` if omitted.
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  `"Consolidación eliminada exitosamente"`
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  Confirmation object returned by the model's `delete()` method: `{ "message": "Consolidación eliminada exitosamente" }`.
+</ResponseField>
+
+---
+
+## Error Responses
+
+All endpoints return a consistent error envelope on failure:
+
+| HTTP Status | Meaning |
+|---|---|
+| `400` | Missing or invalid request parameters (e.g. missing `tipo`, no changes detected) |
+| `404` | Consolidation or referenced client not found |
+| `500` | Unhandled server error; `details` field contains the original error message |
+
+```json
+{
+  "error": "Parámetro tipo requerido (GENERALES o HOTELES)",
+}
+```
+
+```json
+{
+  "error": "Error interno del servidor",
+  "details": "Cannot read properties of null"
+}
+```
+
+---
+
+## Related Pages
+
+- [Authentication](/api/auth) — Obtain a JWT token
+- [Clientes API](/api/clientes) — Manage client companies referenced by `cliente_id`
+- [Audit Logs API](/api/logs) — View per-field change history written on every `PUT`
+- [Reports API](/api/reports) — Generate PDF/Excel reports from consolidation data
+- [Features — Consolidations](/features/consolidations) — Business logic and account schema overview

@@ -1,0 +1,274 @@
+---
+title: "Files API — Excel Upload and Download Endpoints"
+sidebarTitle: "Files"
+description: "Upload Excel files (.xlsx/.xls, max 10 MB) to import consolidated accounting data, browse upload history, and download previously uploaded files by ID."
+---
+
+All file endpoints require a valid JWT token sent in the `Authorization: Bearer <token>` header. Files are uploaded as `multipart/form-data` and stored in the server-side `uploads/` directory with a UUID-prefixed filename to prevent collisions. Once uploaded, an Excel workbook is automatically parsed with [SheetJS (xlsx)](https://sheetjs.com/): each sheet is converted to JSON, numeric column totals are computed, and the resulting data is persisted as a consolidated reference that can be retrieved later via `GET /api/files/data/:fileId`.
+
+<Note>
+  Only `.xlsx` and `.xls` files are accepted. PDFs, CSVs, and all other file
+  types are rejected with `400 Bad Request`. The server-side size cap is
+  controlled by the `MAX_FILE_SIZE` environment variable and defaults to
+  **10 MB**.
+</Note>
+
+---
+
+## POST /api/files/upload
+
+Uploads an Excel workbook. The request must be `multipart/form-data`. The file
+field name must be **`file`**.
+
+**Request**
+
+<ParamField body="file" type="file" required>
+  The Excel workbook to upload. Accepted MIME types:
+  `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`
+  (`.xlsx`) and `application/vnd.ms-excel` (`.xls`). Maximum size: **10 MB**.
+</ParamField>
+
+**Response** — `201 Created`
+
+<ResponseField name="message" type="string">
+  Confirmation string: `"Archivo subido exitosamente"`.
+</ResponseField>
+
+<ResponseField name="file" type="object">
+  Metadata for the uploaded file.
+
+  <Expandable title="file fields">
+    <ResponseField name="id" type="number">
+      Auto-incremented database ID for the uploaded file record.
+    </ResponseField>
+    <ResponseField name="original_name" type="string">
+      The original filename as provided by the client (e.g. `consolidacion_junio.xlsx`).
+    </ResponseField>
+    <ResponseField name="filename" type="string">
+      The server-assigned filename including timestamp and UUID prefix (e.g. `1720612800000_uuid.xlsx`).
+    </ResponseField>
+    <ResponseField name="filesize" type="number">
+      File size in bytes.
+    </ResponseField>
+    <ResponseField name="upload_date" type="string">
+      ISO 8601 timestamp of the upload.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+```bash
+curl -X POST https://your-host/api/files/upload \
+  -H "Authorization: Bearer <token>" \
+  -F "file=@/path/to/consolidacion_junio.xlsx"
+```
+
+```json
+{
+  "message": "Archivo subido exitosamente",
+  "file": {
+    "id": 42,
+    "original_name": "consolidacion_junio.xlsx",
+    "filename": "1720612800000_3f2e1a4b-…xlsx",
+    "filesize": 204800,
+    "upload_date": "2024-07-10T14:00:00.000Z"
+  }
+}
+```
+
+**Error codes**
+
+| Status | Reason |
+|--------|--------|
+| `400` | No file provided, or file type is not `.xlsx`/`.xls` |
+| `413` | File exceeds the 10 MB size limit |
+| `401` | Missing or invalid JWT |
+
+---
+
+## GET /api/files/history
+
+Returns a list of all uploaded files with their metadata. Admins see every
+file from every user; non-admin users see only their own uploads.
+
+**Query parameters**
+
+<ParamField query="userId" type="number">
+  *(Admin only)* Filter results to files uploaded by a specific user ID.
+  Ignored for non-admin callers.
+</ParamField>
+
+**Response**
+
+<ResponseField name="files" type="array">
+  Array of file metadata objects ordered by upload date (most recent first).
+
+  <Expandable title="file entry fields">
+    <ResponseField name="id" type="number">
+      File record ID.
+    </ResponseField>
+    <ResponseField name="original_name" type="string">
+      Original filename supplied by the uploader.
+    </ResponseField>
+    <ResponseField name="filename" type="string">
+      Server-side stored filename.
+    </ResponseField>
+    <ResponseField name="filesize" type="number">
+      File size in bytes.
+    </ResponseField>
+    <ResponseField name="upload_date" type="string">
+      ISO 8601 upload timestamp.
+    </ResponseField>
+    <ResponseField name="username" type="string">
+      Username of the user who uploaded the file.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+```bash
+curl -X GET "https://your-host/api/files/history" \
+  -H "Authorization: Bearer <token>"
+```
+
+```json
+{
+  "files": [
+    {
+      "id": 42,
+      "original_name": "consolidacion_junio.xlsx",
+      "filename": "1720612800000_3f2e1a4b-…xlsx",
+      "filesize": 204800,
+      "upload_date": "2024-07-10T14:00:00.000Z",
+      "username": "contadora"
+    }
+  ]
+}
+```
+
+---
+
+## GET /api/files/download/:fileId
+
+Downloads the raw Excel file identified by `fileId` as a binary file
+attachment. Admins can download any file; non-admin users can only download
+files they uploaded themselves.
+
+**Path parameter**
+
+<ParamField path="fileId" type="number" required>
+  The numeric ID of the file to download (from the `history` list or upload
+  response).
+</ParamField>
+
+**Response** — binary file stream (`Content-Disposition: attachment`).
+
+The server calls `res.download()` which sets the correct headers so the browser
+or `curl` client receives the file under its original name.
+
+```bash
+curl -X GET https://your-host/api/files/download/42 \
+  -H "Authorization: Bearer <token>" \
+  -O -J
+```
+
+**Error codes**
+
+| Status | Reason |
+|--------|--------|
+| `403` | Non-admin user trying to download another user's file |
+| `404` | File record not found in the database, or physical file missing on disk |
+
+---
+
+## GET /api/files/data/:fileId
+
+Returns the parsed and consolidated data extracted from the uploaded Excel
+workbook. The data was pre-processed on upload — each worksheet is represented
+as an object with row data and computed numeric column totals.
+
+**Path parameter**
+
+<ParamField path="fileId" type="number" required>
+  The numeric ID of the file whose consolidated data to retrieve.
+</ParamField>
+
+**Response**
+
+<ResponseField name="file" type="object">
+  Summary of the source file.
+
+  <Expandable title="file fields">
+    <ResponseField name="id" type="number">File record ID.</ResponseField>
+    <ResponseField name="original_name" type="string">Original filename.</ResponseField>
+    <ResponseField name="upload_date" type="string">ISO 8601 upload timestamp.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="data" type="array">
+  Array of consolidated sheet objects. Each entry corresponds to one worksheet
+  in the workbook and contains:
+
+  <Expandable title="sheet data fields">
+    <ResponseField name="sheet_name" type="string">
+      Name of the Excel worksheet tab.
+    </ResponseField>
+    <ResponseField name="row_data" type="array">
+      Array of row objects keyed by column header names.
+    </ResponseField>
+    <ResponseField name="totals" type="object">
+      Computed totals: `totalRows` (number), `numericColumns` (object mapping
+      each numeric column header to `{ sum, count, min, max, average }`), and
+      `summary` (object with `headers`, `totalDataRows`,
+      `numericColumnsCount`).
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+```bash
+curl -X GET https://your-host/api/files/data/42 \
+  -H "Authorization: Bearer <token>"
+```
+
+```json
+{
+  "file": {
+    "id": 42,
+    "original_name": "consolidacion_junio.xlsx",
+    "upload_date": "2024-07-10T14:00:00.000Z"
+  },
+  "data": [
+    {
+      "sheet_name": "Generales",
+      "row_data": [
+        { "RTN": "08011985123456", "Empresa": "Café del Valle", "Ventas": "120000" }
+      ],
+      "totals": {
+        "totalRows": 1,
+        "numericColumns": {
+          "Ventas": { "sum": 120000, "count": 1, "min": 120000, "max": 120000, "average": 120000 }
+        },
+        "summary": {
+          "headers": ["RTN", "Empresa", "Ventas"],
+          "totalDataRows": 1,
+          "numericColumnsCount": 1
+        }
+      }
+    }
+  ]
+}
+```
+
+**Error codes**
+
+| Status | Reason |
+|--------|--------|
+| `403` | Non-admin user trying to view another user's file data |
+| `404` | File record not found |
+
+---
+
+## Related pages
+
+- [Auth API](/api/auth) — obtain the JWT required by all file endpoints
+- [Consolidaciones API](/api/consolidaciones) — create consolidation records from uploaded data
+- [Features → Export](/features/export) — export consolidated results back to Excel
+- [Configuration → Environment](/configuration/environment) — `MAX_FILE_SIZE` and upload directory settings
